@@ -28,6 +28,9 @@ document.addEventListener("DOMContentLoaded", () => {
   elements.scrapeForm = document.getElementById("scrape-form");
   elements.toast = document.getElementById("toast");
 
+  // Initialize theme
+  initTheme();
+
   // Setup tab navigation
   setupTabs();
 
@@ -41,6 +44,36 @@ document.addEventListener("DOMContentLoaded", () => {
   // Connect to SSE
   connectSSE();
 });
+
+// Theme Management
+function initTheme() {
+  // Check for saved theme preference
+  const savedTheme = localStorage.getItem("theme");
+
+  if (savedTheme) {
+    // Use saved preference
+    document.documentElement.setAttribute("data-theme", savedTheme);
+  }
+  // If no saved preference, let CSS media query handle it (auto-detect)
+}
+
+function toggleTheme() {
+  const currentTheme = document.documentElement.getAttribute("data-theme");
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+  let newTheme;
+  if (currentTheme === "light") {
+    newTheme = "dark";
+  } else if (currentTheme === "dark") {
+    newTheme = "light";
+  } else {
+    // No explicit theme set, check system preference
+    newTheme = prefersDark ? "light" : "dark";
+  }
+
+  document.documentElement.setAttribute("data-theme", newTheme);
+  localStorage.setItem("theme", newTheme);
+}
 
 // Tab Navigation
 function setupTabs() {
@@ -79,6 +112,12 @@ function setupEventListeners() {
   elements.searchQuery.addEventListener("keypress", (e) => {
     if (e.key === "Enter") handleSearch();
   });
+
+  // Theme toggle
+  const themeToggle = document.getElementById("theme-toggle");
+  if (themeToggle) {
+    themeToggle.addEventListener("click", toggleTheme);
+  }
 }
 
 // API Functions
