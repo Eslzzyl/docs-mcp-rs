@@ -7,3 +7,4 @@ pub mod core;
 pub mod store;
 pub mod scraper;
 pub mod splitter;
+pub mod embed;
