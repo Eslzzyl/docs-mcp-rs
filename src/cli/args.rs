@@ -16,6 +16,7 @@ pub struct Cli {
         short,
         long,
         global = true,
+        env = "DOCS_MCP_EMBEDDING_MODEL",
         default_value = "openai:text-embedding-3-small"
     )]
     pub model: String,
@@ -24,9 +25,17 @@ pub struct Cli {
     #[arg(long, global = true, env = "OPENAI_API_KEY")]
     pub openai_key: Option<String>,
 
+    /// OpenAI API base URL (or set OPENAI_API_BASE env var).
+    #[arg(long, global = true, env = "OPENAI_API_BASE")]
+    pub openai_base: Option<String>,
+
     /// Google API key (or set GOOGLE_API_KEY env var).
     #[arg(long, global = true, env = "GOOGLE_API_KEY")]
     pub google_key: Option<String>,
+
+    /// Google API base URL (or set GOOGLE_API_BASE env var).
+    #[arg(long, global = true, env = "GOOGLE_API_BASE")]
+    pub google_base: Option<String>,
 
     #[command(subcommand)]
     pub command: Commands,

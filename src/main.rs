@@ -20,6 +20,9 @@ use tokio::sync::RwLock;
 
 #[tokio::main]
 async fn main() {
+    // Load .env file if present (ignore errors if file doesn't exist)
+    let _ = dotenvy::dotenv();
+
     // Initialize logging
     tracing_subscriber::fmt::init();
 
@@ -45,12 +48,14 @@ async fn main() {
     config.embedding = EmbeddingConfig {
         provider: embedding_provider,
         openai_api_key: cli.openai_key.clone(),
+        openai_api_base: cli.openai_base.clone(),
         openai_model: if provider == "openai" {
             model_id.clone()
         } else {
             "text-embedding-3-small".to_string()
         },
         google_api_key: cli.google_key.clone(),
+        google_api_base: cli.google_base.clone(),
         google_model: if provider == "google" {
             model_id.clone()
         } else {

@@ -40,22 +40,46 @@ pub trait Embedder: Send + Sync {
 pub fn create_embedder(config: &EmbeddingConfig) -> Result<Box<dyn Embedder>> {
     match config.provider {
         EmbeddingProvider::OpenAI => match &config.openai_api_key {
-            Some(api_key) if !api_key.is_empty() => Ok(Box::new(OpenAIEmbedder::new(
-                api_key.clone(),
-                config.openai_model.clone(),
-                config.dimension,
-            )?)),
+            Some(api_key) if !api_key.is_empty() => {
+                let embedder = if let Some(base_url) = &config.openai_api_base {
+                    OpenAIEmbedder::with_base_url(
+                        api_key.clone(),
+                        base_url.clone(),
+                        config.openai_model.clone(),
+                        config.dimension,
+                    )?
+                } else {
+                    OpenAIEmbedder::new(
+                        api_key.clone(),
+                        config.openai_model.clone(),
+                        config.dimension,
+                    )?
+                };
+                Ok(Box::new(embedder))
+            }
             _ => {
                 tracing::warn!("OpenAI API key not configured, using fallback (FTS-only search)");
                 Ok(Box::new(NoneEmbedder::new()))
             }
         },
         EmbeddingProvider::Google => match &config.google_api_key {
-            Some(api_key) if !api_key.is_empty() => Ok(Box::new(GoogleEmbedder::new(
-                api_key.clone(),
-                config.google_model.clone(),
-                config.dimension,
-            )?)),
+            Some(api_key) if !api_key.is_empty() => {
+                let embedder = if let Some(base_url) = &config.google_api_base {
+                    GoogleEmbedder::with_base_url(
+                        api_key.clone(),
+                        config.google_model.clone(),
+                        config.dimension,
+                        base_url.clone(),
+                    )?
+                } else {
+                    GoogleEmbedder::new(
+                        api_key.clone(),
+                        config.google_model.clone(),
+                        config.dimension,
+                    )?
+                };
+                Ok(Box::new(embedder))
+            }
             _ => {
                 tracing::warn!("Google API key not configured, using fallback (FTS-only search)");
                 Ok(Box::new(NoneEmbedder::new()))

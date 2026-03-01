@@ -175,6 +175,10 @@ pub struct EmbeddingConfig {
     #[serde(default)]
     pub openai_api_key: Option<String>,
 
+    /// OpenAI API base URL.
+    #[serde(default)]
+    pub openai_api_base: Option<String>,
+
     /// OpenAI embedding model.
     #[serde(default = "default_openai_model")]
     pub openai_model: String,
@@ -182,6 +186,10 @@ pub struct EmbeddingConfig {
     /// Google API key.
     #[serde(default)]
     pub google_api_key: Option<String>,
+
+    /// Google API base URL.
+    #[serde(default)]
+    pub google_api_base: Option<String>,
 
     /// Google embedding model.
     #[serde(default = "default_google_model")]
@@ -221,8 +229,10 @@ impl Default for EmbeddingConfig {
         Self {
             provider: default_provider(),
             openai_api_key: None,
+            openai_api_base: None,
             openai_model: default_openai_model(),
             google_api_key: None,
+            google_api_base: None,
             google_model: default_google_model(),
             dimension: default_embedding_dim(),
         }
