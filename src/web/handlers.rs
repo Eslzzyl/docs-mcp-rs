@@ -322,21 +322,37 @@ async fn search_library(
         None => return Json(ApiResponse::error("No versions found")),
     };
 
-    // Generate embedding for query
-    let embedder = state.embedder.read().await;
-    let query_embedding = match embedder.embed(&query.q).await {
-        Ok(e) => e,
-        Err(e) => return Json(ApiResponse::error(e.to_string())),
-    };
-    drop(embedder);
-
     // Search
     let vector_search = VectorSearch::with_options(&state.connection, SearchOptions {
         limit: query.limit,
         ..Default::default()
     });
 
-    match vector_search.search(&name, Some(&latest_version.name), &query_embedding, &query.q).await {
+    // Check if embedder is available
+    let embedder = state.embedder.read().await;
+    let is_embedding_available = embedder.is_available();
+
+    let results = if is_embedding_available {
+        // Try to generate embedding for query
+        match embedder.embed(&query.q).await {
+            Ok(query_embedding) => {
+                // Use hybrid search (vector + FTS)
+                drop(embedder);
+                vector_search.search(&name, Some(&latest_version.name), &query_embedding, &query.q).await
+            }
+            Err(_) => {
+                // Fallback to FTS-only if embedding fails
+                drop(embedder);
+                vector_search.search_fts_only(&name, Some(&latest_version.name), &query.q).await
+            }
+        }
+    } else {
+        // Use FTS-only search
+        drop(embedder);
+        vector_search.search_fts_only(&name, Some(&latest_version.name), &query.q).await
+    };
+
+    match results {
         Ok(results) => {
             let search_results: Vec<SearchResult> = results
                 .into_iter()

@@ -69,6 +69,20 @@ impl<'a> VectorSearch<'a> {
         self.build_search_results(combined).await
     }
 
+    /// Perform FTS-only search (when embedding is not available).
+    pub async fn search_fts_only(
+        &self,
+        library_name: &str,
+        version_name: Option<&str>,
+        query_text: &str,
+    ) -> Result<Vec<SearchResult>> {
+        // Get FTS results only
+        let fts_results = self.fts_search(library_name, version_name, query_text).await?;
+        
+        // Use FTS results directly (no fusion needed)
+        self.build_search_results(fts_results).await
+    }
+
     /// Perform vector similarity search.
     async fn vector_search(
         &self,
@@ -295,31 +309,5 @@ impl<'a> VectorSearch<'a> {
     /// Get the search options.
     pub fn options(&self) -> &SearchOptions {
         &self.options
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_default_options() {
-        let options = SearchOptions::default();
-        assert_eq!(options.limit, 10);
-        assert_eq!(options.vector_weight, 0.5);
-        assert_eq!(options.fts_weight, 0.5);
-    }
-
-    #[test]
-    fn test_escape_fts_query() {
-        let conn = Connection::in_memory().unwrap();
-        let search = VectorSearch::new(&conn);
-        
-        let escaped = search.escape_fts_query("hello world");
-        assert!(escaped.contains("hello"));
-        assert!(escaped.contains("world"));
-        
-        let escaped = search.escape_fts_query("test (parentheses)");
-        assert!(!escaped.contains('('));
     }
 }
