@@ -1,0 +1,3 @@
+[submodule "docs-mcp-server"]
+	path = docs-mcp-server
+	url = https://github.com/arabold/docs-mcp-server.git
