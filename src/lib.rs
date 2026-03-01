@@ -11,3 +11,4 @@ pub mod embed;
 pub mod events;
 pub mod pipeline;
 pub mod mcp;
+pub mod cli;

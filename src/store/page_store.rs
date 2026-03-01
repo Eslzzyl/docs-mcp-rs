@@ -172,6 +172,13 @@ impl<'a> PageStore<'a> {
             conn.execute("DELETE FROM pages WHERE version_id = ?1", rusqlite::params![version_id])
         })
     }
+
+    /// Delete a page by ID.
+    pub fn delete(&self, id: i64) -> Result<usize> {
+        self.conn.with_connection(|conn| {
+            conn.execute("DELETE FROM pages WHERE id = ?1", rusqlite::params![id])
+        })
+    }
 }
 
 #[cfg(test)]

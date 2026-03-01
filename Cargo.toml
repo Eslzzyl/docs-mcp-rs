@@ -8,6 +8,7 @@ anyhow = "1.0.102"
 async-openai = "0.33.0"
 async-trait = "0.1.89"
 chrono = { version = "0.4.44", features = ["serde"] }
+clap = { version = "4.5.60", features = ["derive", "env"] }
 html2md = "0.2.15"
 regex = "1.12.3"
 reqwest = { version = "0.13.2", features = ["json"] }
