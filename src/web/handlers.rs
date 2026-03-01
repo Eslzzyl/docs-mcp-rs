@@ -8,12 +8,44 @@ use axum::{
     Router,
     extract::{Path, Query, State},
     http::header,
-    response::{Html, IntoResponse, Json},
+    response::{IntoResponse, Json},
     routing::{delete, get, post},
 };
+use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+/// Static files embedded at compile time.
+#[derive(RustEmbed)]
+#[folder = "public/"]
+struct StaticAssets;
+
+/// Serve embedded static files.
+async fn serve_static_file(path: Path<String>) -> impl IntoResponse {
+    let path = path.0;
+    let path = if path.is_empty() || path == "/" {
+        "index.html"
+    } else {
+        &path
+    };
+
+    match StaticAssets::get(path) {
+        Some(content) => {
+            let mime_type = mime_guess::from_path(path).first_or_octet_stream();
+            (
+                [(header::CONTENT_TYPE, mime_type.as_ref())],
+                content.data,
+            )
+                .into_response()
+        }
+        None => (
+            axum::http::StatusCode::NOT_FOUND,
+            "Not Found",
+        )
+            .into_response(),
+    }
+}
 
 /// Application state shared across handlers.
 #[derive(Clone)]
@@ -127,10 +159,9 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/jobs/{id}/cancel", post(cancel_job))
         .route("/api/jobs/clear", post(clear_jobs))
         .route("/api/events", get(crate::web::sse::sse_handler))
-        // Web UI
-        .route("/", get(index_page))
-        .route("/style.css", get(serve_css))
-        .route("/app.js", get(serve_js))
+        // Web UI - serve embedded static files
+        .route("/", get(|| serve_static_file(Path(String::new()))))
+        .route("/{*path}", get(serve_static_file))
         .with_state(state)
 }
 
@@ -152,35 +183,10 @@ pub fn create_router_with_mcp(state: AppState, mcp_service: crate::mcp::McpHttpS
         .route("/api/jobs/{id}/cancel", post(cancel_job))
         .route("/api/jobs/clear", post(clear_jobs))
         .route("/api/events", get(crate::web::sse::sse_handler))
-        // Web UI
-        .route("/", get(index_page))
-        .route("/style.css", get(serve_css))
-        .route("/app.js", get(serve_js))
+        // Web UI - serve embedded static files
+        .route("/", get(|| serve_static_file(Path(String::new()))))
+        .route("/{*path}", get(serve_static_file))
         .with_state(state)
-}
-
-/// GET / - Index page.
-async fn index_page() -> Html<&'static str> {
-    Html(include_str!("../../public/index.html"))
-}
-
-/// GET /style.css - Serve CSS.
-async fn serve_css() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
-        include_str!("../../public/style.css"),
-    )
-}
-
-/// GET /app.js - Serve JavaScript.
-async fn serve_js() -> impl IntoResponse {
-    (
-        [(
-            header::CONTENT_TYPE,
-            "application/javascript; charset=utf-8",
-        )],
-        include_str!("../../public/app.js"),
-    )
 }
 
 /// GET /api/libraries - List all libraries.
