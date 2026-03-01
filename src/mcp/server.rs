@@ -197,4 +197,36 @@ impl ServerHandler for DocsMcpServer {
             ..Default::default()
         }
     }
+
+    fn list_tools(
+        &self,
+        _request: Option<rmcp::model::PaginatedRequestParams>,
+        _context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> impl std::future::Future<Output = std::result::Result<rmcp::model::ListToolsResult, rmcp::ErrorData>> + Send + '_ {
+        let tools = self.tool_router.list_all();
+        std::future::ready(Ok(rmcp::model::ListToolsResult {
+            tools,
+            ..Default::default()
+        }))
+    }
+
+    fn call_tool(
+        &self,
+        request: rmcp::model::CallToolRequestParams,
+        context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> impl std::future::Future<Output = std::result::Result<rmcp::model::CallToolResult, rmcp::ErrorData>> + Send + '_ {
+        use rmcp::handler::server::tool::ToolCallContext;
+
+        let tool_context = ToolCallContext::new(self, request, context);
+        async move {
+            self.tool_router
+                .call(tool_context)
+                .await
+                .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))
+        }
+    }
+
+    fn get_tool(&self, name: &str) -> Option<rmcp::model::Tool> {
+        self.tool_router.get(name).cloned()
+    }
 }

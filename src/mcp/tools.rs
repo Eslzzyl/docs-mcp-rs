@@ -55,8 +55,11 @@ fn default_limit() -> usize {
 }
 
 /// Tool parameters for list_libraries.
-#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
-pub struct ListLibrariesParams;
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema, Default)]
+pub struct ListLibrariesParams {
+    #[serde(flatten)]
+    _empty: std::collections::HashMap<String, serde_json::Value>,
+}
 
 /// Tool parameters for remove_library.
 #[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
