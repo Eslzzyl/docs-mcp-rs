@@ -10,7 +10,10 @@ use rmcp::{
     ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{ServerCapabilities, ServerInfo},
-    tool, tool_router,
+    tool, tool_handler, tool_router,
+    transport::streamable_http_server::{
+        session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
+    },
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -34,8 +37,22 @@ impl DocsMcpServer {
             config,
             connection,
             embedder: Arc::new(RwLock::new(embedder)),
-            tool_router: Default::default(),
+            tool_router: Self::tool_router(),
         })
+    }
+
+    /// Create a new docs MCP server with shared resources.
+    pub fn new_shared(
+        config: Arc<Config>,
+        connection: Arc<Connection>,
+        embedder: Arc<RwLock<Box<dyn Embedder>>>,
+    ) -> Self {
+        Self {
+            config,
+            connection,
+            embedder,
+            tool_router: Self::tool_router(),
+        }
     }
 
     /// Start the MCP server with stdio transport.
@@ -57,6 +74,33 @@ impl DocsMcpServer {
         Ok(())
     }
 
+    /// Create a StreamableHttpService for HTTP transport.
+    pub fn create_http_service(
+        config: Arc<Config>,
+        connection: Arc<Connection>,
+        embedder: Arc<RwLock<Box<dyn Embedder>>>,
+    ) -> StreamableHttpService<Self, LocalSessionManager> {
+        let http_config = StreamableHttpServerConfig {
+            sse_keep_alive: Some(std::time::Duration::from_secs(15)),
+            sse_retry: Some(std::time::Duration::from_secs(3)),
+            stateful_mode: true,
+            json_response: false,
+            ..Default::default()
+        };
+
+        StreamableHttpService::new(
+            move || {
+                Ok(Self::new_shared(
+                    config.clone(),
+                    connection.clone(),
+                    embedder.clone(),
+                ))
+            },
+            Arc::new(LocalSessionManager::default()),
+            http_config,
+        )
+    }
+
     /// Get the configuration.
     pub fn config(&self) -> &Config {
         &self.config
@@ -66,7 +110,10 @@ impl DocsMcpServer {
     pub fn connection(&self) -> &Connection {
         &self.connection
     }
+}
 
+#[tool_router(router = tool_router)]
+impl DocsMcpServer {
     #[tool(description = "Scrape and index a documentation website")]
     async fn scrape_docs(&self, Parameters(params): Parameters<ScrapeDocsParams>) -> String {
         let embedder = self.embedder.read().await;
@@ -137,9 +184,6 @@ impl DocsMcpServer {
         }
     }
 }
-
-#[tool_router]
-impl DocsMcpServer {}
 
 impl ServerHandler for DocsMcpServer {
     fn get_info(&self) -> ServerInfo {

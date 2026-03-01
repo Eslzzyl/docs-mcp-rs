@@ -12,7 +12,7 @@ use docs_mcp_rs::mcp::DocsMcpServer;
 use docs_mcp_rs::pipeline::{PipelineManager, ScraperOptions};
 use docs_mcp_rs::store::{Connection, DocumentStore, LibraryStore, PageStore, VectorSearch, VersionStore, run_migrations};
 use docs_mcp_rs::core::types::VersionStatus;
-use docs_mcp_rs::web::{create_router, AppState};
+use docs_mcp_rs::web::{create_router, create_router_with_mcp, AppState};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -70,8 +70,8 @@ async fn main() {
     // Execute command
     let connection = Arc::new(conn);
     let result = match cli.command {
-        Commands::Serve { port } => {
-            run_serve(connection, &config, port).await
+        Commands::Serve { port, mcp } => {
+            run_serve(connection, &config, port, mcp).await
         }
         Commands::Scrape { library, url, version, max_pages, max_depth, concurrency } => {
             run_scrape(connection, &config, library, url, version, max_pages, max_depth, concurrency).await
@@ -98,6 +98,7 @@ async fn run_serve(
     connection: Arc<Connection>,
     config: &Config,
     port: Option<u16>,
+    enable_mcp: bool,
 ) -> docs_mcp_rs::core::Result<()> {
     // Create embedder
     let embedder = create_embedder(&config.embedding)?;
@@ -118,7 +119,7 @@ async fn run_serve(
     pipeline.start().await;
 
     if let Some(p) = port {
-        println!("🚀 MCP HTTP server starting on port {}", p);
+        println!("🚀 HTTP server starting on port {}", p);
         println!("📍 Web UI: http://localhost:{}", p);
 
         // Create web app state
@@ -129,8 +130,19 @@ async fn run_serve(
             event_bus: event_bus.clone(),
         };
 
-        // Create router
-        let app = create_router(state);
+        // Create router with or without MCP endpoint
+        let app = if enable_mcp {
+            println!("📍 MCP HTTP: http://localhost:{}/mcp", p);
+            let config_arc = Arc::new(config.clone());
+            let mcp_service = DocsMcpServer::create_http_service(
+                config_arc,
+                connection.clone(),
+                embedder.clone(),
+            );
+            create_router_with_mcp(state, mcp_service)
+        } else {
+            create_router(state)
+        };
 
         // Create TCP listener
         let addr = std::net::SocketAddr::from(([0, 0, 0, 0], p));

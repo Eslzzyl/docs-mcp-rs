@@ -131,6 +131,31 @@ pub fn create_router(state: AppState) -> Router {
         .with_state(state)
 }
 
+/// Create the web router with MCP HTTP transport endpoint.
+pub fn create_router_with_mcp(
+    state: AppState,
+    mcp_service: crate::mcp::McpHttpService,
+) -> Router {
+    Router::new()
+        // MCP Streamable HTTP endpoint
+        .nest_service("/mcp", mcp_service)
+        // API routes
+        .route("/api/libraries", get(list_libraries))
+        .route("/api/libraries/{name}", get(get_library))
+        .route("/api/libraries/{name}/versions/{version}", delete(delete_version))
+        .route("/api/libraries/{name}/search", get(search_library))
+        .route("/api/jobs", get(list_jobs))
+        .route("/api/jobs", post(create_job))
+        .route("/api/jobs/{id}/cancel", post(cancel_job))
+        .route("/api/jobs/clear", post(clear_jobs))
+        .route("/api/events", get(crate::web::sse::sse_handler))
+        // Web UI
+        .route("/", get(index_page))
+        .route("/style.css", get(serve_css))
+        .route("/app.js", get(serve_js))
+        .with_state(state)
+}
+
 /// GET / - Index page.
 async fn index_page() -> Html<&'static str> {
     Html(include_str!("../../public/index.html"))

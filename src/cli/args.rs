@@ -30,11 +30,16 @@ pub struct Cli {
 /// Available CLI commands.
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Start the MCP server (stdio mode).
+    /// Start the MCP server (stdio mode by default).
     Serve {
         /// Port for HTTP mode (if specified, runs as HTTP server instead of stdio).
         #[arg(short, long)]
         port: Option<u16>,
+
+        /// Enable MCP Streamable HTTP transport endpoint at /mcp.
+        /// Only applicable when --port is specified.
+        #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
+        mcp: bool,
     },
 
     /// Scrape and index documentation from a URL.

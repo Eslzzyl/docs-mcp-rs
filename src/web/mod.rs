@@ -5,4 +5,4 @@
 mod handlers;
 mod sse;
 
-pub use handlers::{create_router, AppState};
+pub use handlers::{create_router, create_router_with_mcp, AppState};
