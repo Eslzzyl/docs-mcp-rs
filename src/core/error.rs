@@ -42,8 +42,14 @@ pub enum Error {
     #[error("Scraper error: {0}")]
     Scraper(String),
 
+    #[error("Scraping error: {0}")]
+    Scraping(String),
+
     #[error("Pipeline error: {0}")]
     Pipeline(String),
+
+    #[error("MCP error: {0}")]
+    Mcp(String),
 
     #[error("Job not found: {0}")]
     JobNotFound(String),
