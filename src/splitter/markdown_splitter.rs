@@ -125,6 +125,11 @@ impl MarkdownSplitter {
     fn split_section(&self, section: &Section, sort_order: &mut i32) -> Vec<TextChunk> {
         let content = section.content.trim();
 
+        // Handle empty content
+        if content.is_empty() {
+            return Vec::new();
+        }
+
         if content.len() <= self.config.chunk_size {
             return vec![TextChunk::new(
                 content.to_string(),
@@ -144,8 +149,9 @@ impl MarkdownSplitter {
         // Split large sections
         let mut chunks = Vec::new();
         let mut start = 0;
+        let content_len = content.len();
 
-        while start < content.len() {
+        while start < content_len {
             let end = self.find_split_point(content, start);
             let chunk_content = content[start..end].trim();
 
@@ -166,8 +172,16 @@ impl MarkdownSplitter {
                 *sort_order += 1;
             }
 
-            start = end.saturating_sub(self.config.chunk_overlap);
-            if start >= content.len() {
+            // Prevent infinite loop: ensure we make progress
+            let next_start = end.saturating_sub(self.config.chunk_overlap);
+            if next_start <= start {
+                // If overlap would cause us to not make progress, move forward by chunk_size
+                start = (start + self.config.chunk_size).min(content_len);
+            } else {
+                start = next_start;
+            }
+
+            if start >= content_len {
                 break;
             }
         }
@@ -177,10 +191,17 @@ impl MarkdownSplitter {
 
     /// Find a good split point in the content.
     fn find_split_point(&self, content: &str, start: usize) -> usize {
-        let ideal_end = (start + self.config.chunk_size).min(content.len());
+        let content_len = content.len();
 
-        if ideal_end == content.len() {
-            return content.len();
+        // Bounds check: ensure start is within content
+        if start >= content_len {
+            return content_len;
+        }
+
+        let ideal_end = (start + self.config.chunk_size).min(content_len);
+
+        if ideal_end == content_len {
+            return content_len;
         }
 
         // Try to find paragraph break
