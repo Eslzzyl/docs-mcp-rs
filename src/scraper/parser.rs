@@ -193,7 +193,7 @@ mod tests {
         let html = r#"<html><head><title>Test Page</title></head><body></body></html>"#;
         let parser = HtmlParser::new();
         let doc = parser.parse(html);
-        
+
         let title = parser.extract_title(&doc);
         assert_eq!(title, Some("Test Page".to_string()));
     }
@@ -210,12 +210,24 @@ mod tests {
         "#;
         let parser = HtmlParser::new();
         let doc = parser.parse(html);
-        
+
         let links = parser.extract_links(&doc, "https://example.com/").unwrap();
         assert_eq!(links.len(), 3);
-        
-        assert!(links.iter().any(|l| l.url == "https://example.com/page1" && l.is_internal));
-        assert!(links.iter().any(|l| l.url == "https://example.com/page2" && l.is_internal));
-        assert!(links.iter().any(|l| l.url == "https://other.com/page3" && !l.is_internal));
+
+        assert!(
+            links
+                .iter()
+                .any(|l| l.url == "https://example.com/page1" && l.is_internal)
+        );
+        assert!(
+            links
+                .iter()
+                .any(|l| l.url == "https://example.com/page2" && l.is_internal)
+        );
+        assert!(
+            links
+                .iter()
+                .any(|l| l.url == "https://other.com/page3" && !l.is_internal)
+        );
     }
 }

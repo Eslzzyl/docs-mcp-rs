@@ -5,11 +5,11 @@ use crate::events::{EventBus, Job};
 use crate::pipeline::PipelineManager;
 use crate::store::{Connection, LibraryStore, SearchOptions, VersionStore};
 use axum::{
+    Router,
     extract::{Path, Query, State},
     http::header,
     response::{Html, IntoResponse, Json},
     routing::{delete, get, post},
-    Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -117,7 +117,10 @@ pub fn create_router(state: AppState) -> Router {
         // API routes
         .route("/api/libraries", get(list_libraries))
         .route("/api/libraries/{name}", get(get_library))
-        .route("/api/libraries/{name}/versions/{version}", delete(delete_version))
+        .route(
+            "/api/libraries/{name}/versions/{version}",
+            delete(delete_version),
+        )
         .route("/api/libraries/{name}/search", get(search_library))
         .route("/api/jobs", get(list_jobs))
         .route("/api/jobs", post(create_job))
@@ -132,17 +135,17 @@ pub fn create_router(state: AppState) -> Router {
 }
 
 /// Create the web router with MCP HTTP transport endpoint.
-pub fn create_router_with_mcp(
-    state: AppState,
-    mcp_service: crate::mcp::McpHttpService,
-) -> Router {
+pub fn create_router_with_mcp(state: AppState, mcp_service: crate::mcp::McpHttpService) -> Router {
     Router::new()
         // MCP Streamable HTTP endpoint
         .nest_service("/mcp", mcp_service)
         // API routes
         .route("/api/libraries", get(list_libraries))
         .route("/api/libraries/{name}", get(get_library))
-        .route("/api/libraries/{name}/versions/{version}", delete(delete_version))
+        .route(
+            "/api/libraries/{name}/versions/{version}",
+            delete(delete_version),
+        )
         .route("/api/libraries/{name}/search", get(search_library))
         .route("/api/jobs", get(list_jobs))
         .route("/api/jobs", post(create_job))
@@ -172,15 +175,16 @@ async fn serve_css() -> impl IntoResponse {
 /// GET /app.js - Serve JavaScript.
 async fn serve_js() -> impl IntoResponse {
     (
-        [(header::CONTENT_TYPE, "application/javascript; charset=utf-8")],
+        [(
+            header::CONTENT_TYPE,
+            "application/javascript; charset=utf-8",
+        )],
         include_str!("../../public/app.js"),
     )
 }
 
 /// GET /api/libraries - List all libraries.
-async fn list_libraries(
-    State(state): State<AppState>,
-) -> Json<ApiResponse<Vec<LibraryInfo>>> {
+async fn list_libraries(State(state): State<AppState>) -> Json<ApiResponse<Vec<LibraryInfo>>> {
     let lib_store = LibraryStore::new(&state.connection);
     let ver_store = VersionStore::new(&state.connection);
 
@@ -196,16 +200,18 @@ async fn list_libraries(
                 let version_infos: Vec<VersionInfo> = versions
                     .into_iter()
                     .map(|v| {
-                        let page_count = state.connection.with_connection(|conn| {
-                            conn.query_row(
-                                "SELECT COUNT(*) FROM pages p 
+                        let page_count = state
+                            .connection
+                            .with_connection(|conn| {
+                                conn.query_row(
+                                    "SELECT COUNT(*) FROM pages p 
                                  JOIN versions v ON p.version_id = v.id 
                                  WHERE v.library_id = ?1 AND v.name = ?2",
-                                rusqlite::params![lib.id, v.name],
-                                |row| row.get::<_, i64>(0),
-                            )
-                        })
-                        .unwrap_or(0) as usize;
+                                    rusqlite::params![lib.id, v.name],
+                                    |row| row.get::<_, i64>(0),
+                                )
+                            })
+                            .unwrap_or(0) as usize;
 
                         VersionInfo {
                             name: v.name,
@@ -244,16 +250,18 @@ async fn get_library(
             let version_infos: Vec<VersionInfo> = versions
                 .into_iter()
                 .map(|v| {
-                    let page_count = state.connection.with_connection(|conn| {
-                        conn.query_row(
-                            "SELECT COUNT(*) FROM pages p 
+                    let page_count = state
+                        .connection
+                        .with_connection(|conn| {
+                            conn.query_row(
+                                "SELECT COUNT(*) FROM pages p 
                              JOIN versions v ON p.version_id = v.id 
                              WHERE v.library_id = ?1 AND v.name = ?2",
-                            rusqlite::params![lib.id, v.name],
-                            |row| row.get::<_, i64>(0),
-                        )
-                    })
-                    .unwrap_or(0) as usize;
+                                rusqlite::params![lib.id, v.name],
+                                |row| row.get::<_, i64>(0),
+                            )
+                        })
+                        .unwrap_or(0) as usize;
 
                     VersionInfo {
                         name: v.name,
@@ -309,7 +317,10 @@ async fn delete_version(
 
                     Json(ApiResponse::success(()))
                 }
-                Ok(None) => Json(ApiResponse::error(format!("Version '{}' not found", version))),
+                Ok(None) => Json(ApiResponse::error(format!(
+                    "Version '{}' not found",
+                    version
+                ))),
                 Err(e) => Json(ApiResponse::error(e.to_string())),
             }
         }
@@ -348,10 +359,13 @@ async fn search_library(
     };
 
     // Search
-    let vector_search = VectorSearch::with_options(&state.connection, SearchOptions {
-        limit: query.limit,
-        ..Default::default()
-    });
+    let vector_search = VectorSearch::with_options(
+        &state.connection,
+        SearchOptions {
+            limit: query.limit,
+            ..Default::default()
+        },
+    );
 
     // Check if embedder is available
     let embedder = state.embedder.read().await;
@@ -363,18 +377,29 @@ async fn search_library(
             Ok(query_embedding) => {
                 // Use hybrid search (vector + FTS)
                 drop(embedder);
-                vector_search.search(&name, Some(&latest_version.name), &query_embedding, &query.q).await
+                vector_search
+                    .search(
+                        &name,
+                        Some(&latest_version.name),
+                        &query_embedding,
+                        &query.q,
+                    )
+                    .await
             }
             Err(_) => {
                 // Fallback to FTS-only if embedding fails
                 drop(embedder);
-                vector_search.search_fts_only(&name, Some(&latest_version.name), &query.q).await
+                vector_search
+                    .search_fts_only(&name, Some(&latest_version.name), &query.q)
+                    .await
             }
         }
     } else {
         // Use FTS-only search
         drop(embedder);
-        vector_search.search_fts_only(&name, Some(&latest_version.name), &query.q).await
+        vector_search
+            .search_fts_only(&name, Some(&latest_version.name), &query.q)
+            .await
     };
 
     match results {
@@ -397,9 +422,7 @@ async fn search_library(
 }
 
 /// GET /api/jobs - List all jobs.
-async fn list_jobs(
-    State(state): State<AppState>,
-) -> Json<ApiResponse<Vec<Job>>> {
+async fn list_jobs(State(state): State<AppState>) -> Json<ApiResponse<Vec<Job>>> {
     let jobs = state.pipeline.get_jobs().await;
     Json(ApiResponse::success(jobs))
 }
@@ -417,7 +440,8 @@ async fn create_job(
         ..Default::default()
     };
 
-    match state.pipeline
+    match state
+        .pipeline
         .enqueue(req.library, req.version, req.url, options)
         .await
     {
@@ -438,9 +462,7 @@ async fn cancel_job(
 }
 
 /// POST /api/jobs/clear - Clear completed jobs.
-async fn clear_jobs(
-    State(state): State<AppState>,
-) -> Json<ApiResponse<usize>> {
+async fn clear_jobs(State(state): State<AppState>) -> Json<ApiResponse<usize>> {
     let count = state.pipeline.clear_completed().await;
     Json(ApiResponse::success(count))
 }

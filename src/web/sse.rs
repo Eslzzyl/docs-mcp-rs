@@ -4,16 +4,14 @@ use crate::web::handlers::AppState;
 use axum::{
     extract::State,
     response::{
-        sse::{Event as SseEvent, KeepAlive, Sse},
         IntoResponse,
+        sse::{Event as SseEvent, KeepAlive, Sse},
     },
 };
 use std::convert::Infallible;
 
 /// GET /api/events - SSE endpoint for real-time events.
-pub async fn sse_handler(
-    State(state): State<AppState>,
-) -> impl IntoResponse {
+pub async fn sse_handler(State(state): State<AppState>) -> impl IntoResponse {
     let receiver = state.event_bus.subscribe().await;
 
     // Create a stream from the receiver

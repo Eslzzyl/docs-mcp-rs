@@ -2,8 +2,8 @@
 
 use crate::core::{Error, Result};
 use crate::scraper::HttpClient;
-use reqwest::header::{ETAG, LAST_MODIFIED, CONTENT_TYPE};
 use reqwest::Response;
+use reqwest::header::{CONTENT_TYPE, ETAG, LAST_MODIFIED};
 use url::Url;
 
 /// Result of fetching a URL.
@@ -67,7 +67,7 @@ impl Fetcher {
 
         // Build request with optional cache headers
         let mut request = self.client.inner().get(url);
-        
+
         if let Some(etag) = etag {
             request = request.header("If-None-Match", etag);
         }
@@ -91,10 +91,7 @@ impl Fetcher {
 
         // Handle error status codes
         if !response.status().is_success() {
-            return Err(Error::Http(format!(
-                "HTTP {} for {}",
-                status, url
-            )));
+            return Err(Error::Http(format!("HTTP {} for {}", status, url)));
         }
 
         // Extract headers

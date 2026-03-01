@@ -39,38 +39,38 @@ impl MarkdownSplitter {
     fn parse_sections(&self, markdown: &str) -> Vec<Section> {
         let mut sections = Vec::new();
         let mut current_section = Section::default();
-        
+
         for line in markdown.lines() {
-          let trimmed = line.trim();
-          
-          // Check for headers
-          if let Some(header) = self.parse_header(trimmed) {
-              // Save current section if it has content
-              if !current_section.content.is_empty() {
-                  sections.push(current_section);
-              }
-              
-              // Start new section
-              current_section = Section {
-                  level: header.level,
-                  title: header.title.clone(),
-                  path: self.build_path(&sections, &header),
-                  content: format!("{}\n\n", line), // Include header in content
-              };
-          } else {
-              // Add content to current section
-              if !current_section.content.is_empty() {
-                  current_section.content.push('\n');
-              }
-              current_section.content.push_str(line);
-          }
+            let trimmed = line.trim();
+
+            // Check for headers
+            if let Some(header) = self.parse_header(trimmed) {
+                // Save current section if it has content
+                if !current_section.content.is_empty() {
+                    sections.push(current_section);
+                }
+
+                // Start new section
+                current_section = Section {
+                    level: header.level,
+                    title: header.title.clone(),
+                    path: self.build_path(&sections, &header),
+                    content: format!("{}\n\n", line), // Include header in content
+                };
+            } else {
+                // Add content to current section
+                if !current_section.content.is_empty() {
+                    current_section.content.push('\n');
+                }
+                current_section.content.push_str(line);
+            }
         }
-        
+
         // Don't forget the last section
         if !current_section.content.trim().is_empty() {
             sections.push(current_section);
         }
-        
+
         sections
     }
 
@@ -85,20 +85,20 @@ impl MarkdownSplitter {
                 title,
             });
         }
-        
+
         // Setext headers (underline with === or ---)
         if line.starts_with("===") || line.starts_with("---") {
             // This would need context from the previous line
             // For simplicity, we'll skip setext headers
         }
-        
+
         None
     }
 
     /// Build the path for a header (breadcrumb of parent headers).
     fn build_path(&self, sections: &[Section], header: &Header) -> Vec<String> {
         let mut path = Vec::new();
-        
+
         // Find all parent headers
         for section in sections {
             if section.level < header.level {
@@ -108,84 +108,92 @@ impl MarkdownSplitter {
                 path[(section.level as usize) - 1] = section.title.clone();
             }
         }
-        
+
         // Add current header
         if path.len() < (header.level as usize) {
             path.resize(header.level as usize, String::new());
         }
         path[(header.level as usize) - 1] = header.title.clone();
-        
+
         // Remove empty entries
         path.retain(|s| !s.is_empty());
-        
+
         path
     }
 
     /// Split a section into chunks if it exceeds the chunk size.
     fn split_section(&self, section: &Section, sort_order: &mut i32) -> Vec<TextChunk> {
         let content = section.content.trim();
-        
+
         if content.len() <= self.config.chunk_size {
             return vec![TextChunk::new(
                 content.to_string(),
                 ChunkMetadata {
                     level: Some(section.level),
-                    path: if section.path.is_empty() { None } else { Some(section.path.clone()) },
+                    path: if section.path.is_empty() {
+                        None
+                    } else {
+                        Some(section.path.clone())
+                    },
                     types: Some(vec!["text".to_string()]),
                 },
                 *sort_order,
             )];
         }
-        
+
         // Split large sections
         let mut chunks = Vec::new();
         let mut start = 0;
-        
+
         while start < content.len() {
             let end = self.find_split_point(content, start);
             let chunk_content = content[start..end].trim();
-            
+
             if !chunk_content.is_empty() {
                 chunks.push(TextChunk::new(
                     chunk_content.to_string(),
                     ChunkMetadata {
                         level: Some(section.level),
-                        path: if section.path.is_empty() { None } else { Some(section.path.clone()) },
+                        path: if section.path.is_empty() {
+                            None
+                        } else {
+                            Some(section.path.clone())
+                        },
                         types: Some(vec!["text".to_string()]),
                     },
                     *sort_order,
                 ));
                 *sort_order += 1;
             }
-            
+
             start = end.saturating_sub(self.config.chunk_overlap);
             if start >= content.len() {
                 break;
             }
         }
-        
+
         chunks
     }
 
     /// Find a good split point in the content.
     fn find_split_point(&self, content: &str, start: usize) -> usize {
         let ideal_end = (start + self.config.chunk_size).min(content.len());
-        
+
         if ideal_end == content.len() {
             return content.len();
         }
-        
+
         // Try to find paragraph break
         let search_range = &content[start..ideal_end + 200.min(content.len() - ideal_end)];
         if let Some(pos) = search_range.rfind("\n\n") {
-          return start + pos + 2;
+            return start + pos + 2;
         }
-        
+
         // Try to find line break
         if let Some(pos) = search_range.rfind('\n') {
-          return start + pos + 1;
+            return start + pos + 1;
         }
-        
+
         ideal_end
     }
 }
@@ -232,9 +240,9 @@ Content for section 2.
 "#;
         let splitter = MarkdownSplitter::new();
         let chunks = splitter.split(markdown);
-        
+
         assert!(!chunks.is_empty());
-        
+
         // Check that headers are included
         let content: String = chunks.iter().map(|c| c.content.as_str()).collect();
         assert!(content.contains("Main Title"));
@@ -261,11 +269,11 @@ Content here.
 "#;
         let splitter = MarkdownSplitter::new();
         let chunks = splitter.split(markdown);
-        
+
         // Find the chunk for Level 3
         let level3_chunk = chunks.iter().find(|c| c.content.contains("Level 3"));
         assert!(level3_chunk.is_some());
-        
+
         let metadata = &level3_chunk.unwrap().metadata;
         assert_eq!(metadata.level, Some(3));
         assert!(metadata.path.is_some());

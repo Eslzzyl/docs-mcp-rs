@@ -1,8 +1,8 @@
 //! Central event bus for application-wide events.
 
-use crate::events::{Event, EventType};
+use crate::events::Event;
 use std::sync::Arc;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 use tracing::debug;
 
 /// Default channel capacity for the event bus.
@@ -66,6 +66,7 @@ impl Default for EventBus {
 /// Event receiver for subscribing to events.
 pub struct EventReceiver {
     receiver: broadcast::Receiver<Event>,
+    #[allow(dead_code)]
     subscriber_count: Arc<RwLock<usize>>,
 }
 
@@ -83,13 +84,9 @@ impl EventReceiver {
 
 impl Drop for EventReceiver {
     fn drop(&mut self) {
-        // Decrement subscriber count when dropped
-        // Use try_write to avoid blocking in drop
-        if let Some(count) = Arc::get_mut(&mut self.subscriber_count) {
-            // We have exclusive access, just decrement
-        } else {
-            // Can't decrement synchronously, that's okay
-        }
+        // Note: We can't reliably decrement the count synchronously in drop
+        // because Arc::get_mut requires exclusive ownership.
+        // The count is a best-effort metric for monitoring purposes.
     }
 }
 

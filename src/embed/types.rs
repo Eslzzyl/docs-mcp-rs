@@ -54,6 +54,7 @@ pub const GOOGLE_MODELS: &[(&str, usize, usize)] = &[
 ];
 
 /// Get the dimension for a model.
+#[allow(dead_code)]
 pub fn get_model_dimension(model_id: &str) -> Option<usize> {
     OPENAI_MODELS
         .iter()
@@ -63,6 +64,7 @@ pub fn get_model_dimension(model_id: &str) -> Option<usize> {
 }
 
 /// Check if a dimension matches a model.
+#[allow(dead_code)]
 pub fn is_valid_dimension(model_id: &str, dimension: usize) -> bool {
     get_model_dimension(model_id)
         .map(|d| d == dimension)

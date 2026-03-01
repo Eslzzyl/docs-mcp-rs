@@ -1,13 +1,13 @@
 //! Content scraping module.
 
 mod client;
-mod fetcher;
-mod parser;
 mod converter;
 mod crawler;
+mod fetcher;
+mod parser;
 
 pub use client::HttpClient;
-pub use fetcher::{Fetcher, FetchResult};
-pub use parser::{HtmlParser, Link};
 pub use converter::HtmlToMarkdown;
-pub use crawler::{Crawler, CrawlConfig, CrawlResult};
+pub use crawler::{CrawlConfig, CrawlResult, Crawler};
+pub use fetcher::{FetchResult, Fetcher};
+pub use parser::{HtmlParser, Link};

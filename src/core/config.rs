@@ -254,9 +254,8 @@ impl Config {
     /// Ensure the storage directory exists.
     pub fn ensure_storage_dir(&self) -> Result<()> {
         if let Some(parent) = self.store_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                Error::Config(format!("Failed to create storage directory: {}", e))
-            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| Error::Config(format!("Failed to create storage directory: {}", e)))?;
         }
         Ok(())
     }

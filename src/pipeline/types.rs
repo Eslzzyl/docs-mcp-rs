@@ -9,6 +9,7 @@ pub use crate::events::{Job, JobProgress, JobStatus};
 pub use crate::core::ScraperOptions;
 
 /// Internal job state for tracking running jobs.
+#[allow(dead_code)]
 pub(crate) struct InternalJob {
     /// The public job representation.
     pub job: Job,
@@ -22,10 +23,14 @@ pub(crate) struct InternalJob {
 pub trait JobCallbacks: Send + Sync {
     /// Called when job status changes.
     fn on_status_change(&self, job: &Job) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
-    
+
     /// Called when job progress updates.
-    fn on_progress(&self, job: &Job, progress: &JobProgress) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
-    
+    fn on_progress(
+        &self,
+        job: &Job,
+        progress: &JobProgress,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
+
     /// Called when job encounters an error.
     fn on_error(&self, job: &Job, error: &str) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
 }

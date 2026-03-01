@@ -1,12 +1,12 @@
 //! Text splitting module for chunking documents.
 
-mod text_splitter;
-mod markdown_splitter;
 mod code_splitter;
+mod markdown_splitter;
+mod text_splitter;
 
-pub use text_splitter::{TextSplitter, SplitConfig};
+pub use code_splitter::{CodeSplitConfig, CodeSplitter};
 pub use markdown_splitter::MarkdownSplitter;
-pub use code_splitter::{CodeSplitter, CodeSplitConfig};
+pub use text_splitter::{SplitConfig, TextSplitter};
 
 use crate::core::ChunkMetadata;
 use serde::{Deserialize, Serialize};

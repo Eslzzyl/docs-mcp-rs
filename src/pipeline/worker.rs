@@ -1,6 +1,8 @@
 //! Pipeline worker for executing jobs.
 
-use crate::core::{ChunkMetadata, NewDocument, NewLibrary, NewPage, NewVersion, Result, ScraperOptions};
+use crate::core::{
+    ChunkMetadata, NewDocument, NewLibrary, NewPage, NewVersion, Result, ScraperOptions,
+};
 use crate::embed::Embedder;
 use crate::scraper::{CrawlConfig, Crawler};
 use crate::splitter::MarkdownSplitter;
@@ -10,7 +12,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, info};
 
 /// Pipeline worker for executing scraping jobs.
-/// 
+///
 /// This is a simpler interface for running jobs synchronously.
 /// For async job management, use `PipelineManager` instead.
 pub struct PipelineWorker {
@@ -21,7 +23,10 @@ pub struct PipelineWorker {
 impl PipelineWorker {
     /// Create a new pipeline worker.
     pub fn new(connection: Arc<Connection>, embedder: Arc<RwLock<Box<dyn Embedder>>>) -> Self {
-        Self { connection, embedder }
+        Self {
+            connection,
+            embedder,
+        }
     }
 
     /// Run a simple crawl and index operation.
@@ -33,12 +38,15 @@ impl PipelineWorker {
         source_url: &str,
         options: Option<ScraperOptions>,
     ) -> Result<usize> {
-        debug!("Starting crawl for {}@{} from {}", library, version, source_url);
+        debug!(
+            "Starting crawl for {}@{} from {}",
+            library, version, source_url
+        );
 
         // Build crawler config
         let options = options.unwrap_or_default();
         let config = CrawlConfig::from(options.clone());
-        
+
         let crawler = Crawler::new(config)?;
         let splitter = MarkdownSplitter::new();
 
@@ -47,7 +55,7 @@ impl PipelineWorker {
         let version_store = VersionStore::new(&self.connection);
         let page_store = PageStore::new(&self.connection);
         let doc_store = DocumentStore::new(&self.connection);
-        
+
         // Find or create library
         let lib = match library_store.find_by_name(library)? {
             Some(l) => l,
@@ -93,7 +101,7 @@ impl PipelineWorker {
             // Split content into chunks
             if !crawl_result.content.is_empty() {
                 let chunks = splitter.split(&crawl_result.content);
-                
+
                 if !chunks.is_empty() {
                     // Generate embeddings
                     let texts: Vec<&str> = chunks.iter().map(|c| c.content.as_str()).collect();
@@ -123,7 +131,10 @@ impl PipelineWorker {
         // Update version status to completed
         version_store.update_status(ver.id, crate::core::types::VersionStatus::Completed)?;
 
-        info!("Crawled and indexed {} pages for {}@{}", pages_processed, library, version);
+        info!(
+            "Crawled and indexed {} pages for {}@{}",
+            pages_processed, library, version
+        );
         Ok(total_pages)
     }
 }

@@ -3,7 +3,7 @@
 use crate::core::{Error, Result};
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
-use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
+use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
 use std::time::Duration;
 
 /// HTTP client wrapper with retry support.
@@ -90,10 +90,8 @@ impl HttpClient {
 
 impl Default for HttpClient {
     fn default() -> Self {
-        Self::new(
-            &format!("docs-mcp-rs/{}", env!("CARGO_PKG_VERSION")),
-            30,
-        ).expect("Failed to create default HTTP client")
+        Self::new(&format!("docs-mcp-rs/{}", env!("CARGO_PKG_VERSION")), 30)
+            .expect("Failed to create default HTTP client")
     }
 }
 

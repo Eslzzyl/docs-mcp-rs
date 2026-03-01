@@ -59,7 +59,7 @@ impl CodeSplitter {
         // Try to split by functions/classes first
         if self.config.preserve_functions {
             let blocks = self.find_code_blocks(&lines, language);
-            
+
             for block in blocks {
                 if block.content.len() <= self.config.base.chunk_size {
                     chunks.push(TextChunk::new(
@@ -104,7 +104,7 @@ impl CodeSplitter {
                 if let Some(block) = current_block.take() {
                     blocks.push(block);
                 }
-                
+
                 current_block = Some(CodeBlock {
                     name,
                     level,
@@ -117,9 +117,9 @@ impl CodeSplitter {
                 if let Some(ref mut block) = current_block {
                     block.content.push('\n');
                     block.content.push_str(line);
-                    
+
                     brace_count += self.count_braces(trimmed);
-                    
+
                     // Check if block is complete
                     if brace_count == 0 && self.is_block_end(trimmed, language) {
                         blocks.push(current_block.take().unwrap());
@@ -138,7 +138,7 @@ impl CodeSplitter {
                 } else if let Some(ref mut block) = current_block {
                     block.content.push('\n');
                     block.content.push_str(line);
-                    
+
                     // Check if default block is too large
                     if block.content.len() > self.config.base.chunk_size {
                         blocks.push(current_block.take().unwrap());
@@ -182,7 +182,8 @@ impl CodeSplitter {
         for (pattern, level) in patterns {
             if let Some(re) = pattern {
                 if let Some(caps) = re.captures(line) {
-                    let name = caps.iter()
+                    let name = caps
+                        .iter()
                         .skip(1)
                         .filter_map(|c| c.map(|m| m.as_str()))
                         .last()
@@ -216,10 +217,19 @@ impl CodeSplitter {
     fn find_js_definition(&self, line: &str) -> Option<(String, i32)> {
         let patterns = [
             (regex::Regex::new(r"^function\s+(\w+)").ok(), 1),
-            (regex::Regex::new(r"^(const|let|var)\s+(\w+)\s*=\s*(async\s+)?function").ok(), 1),
-            (regex::Regex::new(r"^(const|let|var)\s+(\w+)\s*=\s*\(").ok(), 1), // Arrow function
+            (
+                regex::Regex::new(r"^(const|let|var)\s+(\w+)\s*=\s*(async\s+)?function").ok(),
+                1,
+            ),
+            (
+                regex::Regex::new(r"^(const|let|var)\s+(\w+)\s*=\s*\(").ok(),
+                1,
+            ), // Arrow function
             (regex::Regex::new(r"^class\s+(\w+)").ok(), 1),
-            (regex::Regex::new(r"^(export\s+)?(async\s+)?function\s+(\w+)").ok(), 1),
+            (
+                regex::Regex::new(r"^(export\s+)?(async\s+)?function\s+(\w+)").ok(),
+                1,
+            ),
         ];
 
         for (pattern, level) in patterns {
@@ -229,7 +239,9 @@ impl CodeSplitter {
                     for i in (1..caps.len()).rev() {
                         if let Some(m) = caps.get(i) {
                             let name = m.as_str();
-                            if !["const", "let", "var", "export", "async", "function"].contains(&name) {
+                            if !["const", "let", "var", "export", "async", "function"]
+                                .contains(&name)
+                            {
                                 return Some((name.to_string(), level));
                             }
                         }
@@ -243,7 +255,10 @@ impl CodeSplitter {
     fn find_go_definition(&self, line: &str) -> Option<(String, i32)> {
         let patterns = [
             (regex::Regex::new(r"^func\s+(\w+)").ok(), 1),
-            (regex::Regex::new(r"^func\s*\(\w+\s+\*?\w+\)\s+(\w+)").ok(), 2), // Method
+            (
+                regex::Regex::new(r"^func\s*\(\w+\s+\*?\w+\)\s+(\w+)").ok(),
+                2,
+            ), // Method
             (regex::Regex::new(r"^type\s+(\w+)\s+struct").ok(), 1),
             (regex::Regex::new(r"^type\s+(\w+)\s+interface").ok(), 1),
         ];
@@ -277,19 +292,31 @@ impl CodeSplitter {
     /// Check if this line ends a code block.
     fn is_block_end(&self, line: &str, language: &str) -> bool {
         match language {
-            "python" => line.starts_with("def ") || line.starts_with("class ") || line.starts_with("@"),
+            "python" => {
+                line.starts_with("def ") || line.starts_with("class ") || line.starts_with("@")
+            }
             _ => line.trim().starts_with('}'),
         }
     }
 
     /// Split a large code block.
-    fn split_large_block(&self, block: &CodeBlock, sort_order: &mut i32, language: &str) -> Vec<TextChunk> {
+    fn split_large_block(
+        &self,
+        block: &CodeBlock,
+        sort_order: &mut i32,
+        language: &str,
+    ) -> Vec<TextChunk> {
         let lines: Vec<&str> = block.content.lines().collect();
         self.split_by_lines(&lines, sort_order, language)
     }
 
     /// Split code by lines.
-    fn split_by_lines(&self, lines: &[&str], sort_order: &mut i32, language: &str) -> Vec<TextChunk> {
+    fn split_by_lines(
+        &self,
+        lines: &[&str],
+        sort_order: &mut i32,
+        language: &str,
+    ) -> Vec<TextChunk> {
         let mut chunks = Vec::new();
         let mut current_lines = Vec::new();
         let mut current_size = 0;
@@ -297,8 +324,8 @@ impl CodeSplitter {
         for line in lines {
             let line_size = line.len() + 1; // +1 for newline
 
-            if current_size + line_size > self.config.base.chunk_size 
-                || current_lines.len() >= self.config.max_lines_per_chunk 
+            if current_size + line_size > self.config.base.chunk_size
+                || current_lines.len() >= self.config.max_lines_per_chunk
             {
                 if !current_lines.is_empty() {
                     chunks.push(TextChunk::new(
@@ -352,6 +379,7 @@ impl Default for CodeSplitter {
 struct CodeBlock {
     name: String,
     level: i32,
+    #[allow(dead_code)]
     start_line: usize,
     content: String,
 }
@@ -380,9 +408,9 @@ impl Point {
 "#;
         let splitter = CodeSplitter::new();
         let chunks = splitter.split(code, "rust");
-        
+
         assert!(!chunks.is_empty());
-        
+
         // Check that function/struct names are in the content
         let content: String = chunks.iter().map(|c| c.content.as_str()).collect();
         assert!(content.contains("main"));
@@ -403,7 +431,7 @@ class Person:
 "#;
         let splitter = CodeSplitter::new();
         let chunks = splitter.split(code, "python");
-        
+
         assert!(!chunks.is_empty());
     }
 

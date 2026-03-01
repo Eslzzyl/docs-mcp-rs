@@ -10,9 +10,9 @@ use rmcp::{
     ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{ServerCapabilities, ServerInfo},
-    tool, tool_handler, tool_router,
+    tool, tool_router,
     transport::streamable_http_server::{
-        session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
+        StreamableHttpServerConfig, StreamableHttpService, session::local::LocalSessionManager,
     },
 };
 use std::sync::Arc;
@@ -23,6 +23,7 @@ pub struct DocsMcpServer {
     config: Arc<Config>,
     connection: Arc<Connection>,
     embedder: Arc<RwLock<Box<dyn Embedder>>>,
+    #[allow(dead_code)]
     tool_router: ToolRouter<Self>,
 }
 

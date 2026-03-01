@@ -4,8 +4,8 @@ use crate::core::{Error, Result, ScraperOptions};
 use crate::scraper::{Fetcher, HtmlParser, HtmlToMarkdown};
 use regex::Regex;
 use std::collections::{HashSet, VecDeque};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::time::sleep;
 use url::Url;
@@ -68,7 +68,7 @@ impl Default for CrawlConfig {
 impl From<ScraperOptions> for CrawlConfig {
     fn from(options: ScraperOptions) -> Self {
         let mut config = Self::default();
-        
+
         if let Some(max_pages) = options.max_pages {
             config.max_pages = max_pages;
         }
@@ -76,18 +76,12 @@ impl From<ScraperOptions> for CrawlConfig {
             config.max_depth = max_depth;
         }
         if let Some(include) = options.include_patterns {
-            config.include_patterns = include
-                .iter()
-                .filter_map(|p| Regex::new(p).ok())
-                .collect();
+            config.include_patterns = include.iter().filter_map(|p| Regex::new(p).ok()).collect();
         }
         if let Some(exclude) = options.exclude_patterns {
-            config.exclude_patterns = exclude
-                .iter()
-                .filter_map(|p| Regex::new(p).ok())
-                .collect();
+            config.exclude_patterns = exclude.iter().filter_map(|p| Regex::new(p).ok()).collect();
         }
-        
+
         config
     }
 }
@@ -101,14 +95,12 @@ pub struct Crawler {
 impl Crawler {
     /// Create a new crawler with the given configuration.
     pub fn new(config: CrawlConfig) -> Result<Self> {
-        let fetcher = Arc::new(Fetcher::new(
-            crate::scraper::HttpClient::new(&config.user_agent, config.timeout_secs)?
-        ));
-        
-        Ok(Self {
-            config,
-            fetcher,
-        })
+        let fetcher = Arc::new(Fetcher::new(crate::scraper::HttpClient::new(
+            &config.user_agent,
+            config.timeout_secs,
+        )?));
+
+        Ok(Self { config, fetcher })
     }
 
     /// Create a crawler with default configuration.
@@ -122,44 +114,44 @@ impl Crawler {
         let mut visited = HashSet::new();
         let mut queue = VecDeque::new();
         let pages_count = Arc::new(AtomicUsize::new(0));
-        
+
         // Parse and normalize start URL
         let base_url = Url::parse(start_url)
             .map_err(|e| Error::InvalidUrl(format!("Invalid start URL: {}", e)))?;
         let base_domain = base_url.host_str().unwrap_or("").to_string();
-        
+
         queue.push_back((start_url.to_string(), 0usize));
         visited.insert(start_url.to_string());
-        
+
         let parser = HtmlParser::new();
         let converter = HtmlToMarkdown::new();
-        
+
         while let Some((url, depth)) = queue.pop_front() {
             // Check limits
             if pages_count.load(Ordering::Relaxed) >= self.config.max_pages {
                 break;
             }
-            
+
             if depth > self.config.max_depth {
                 continue;
             }
-            
+
             // Check URL patterns
             if !self.should_crawl(&url, &base_domain) {
                 continue;
             }
-            
+
             // Add delay between requests
             if self.config.delay_ms > 0 {
                 sleep(Duration::from_millis(self.config.delay_ms)).await;
             }
-            
+
             // Fetch and process the page
             match self.process_page(&url, depth, &parser, &converter).await {
                 Ok((result, links)) => {
                     results.push(result);
                     pages_count.fetch_add(1, Ordering::Relaxed);
-                    
+
                     // Add new links to queue
                     for link in links {
                         if !visited.contains(&link.url) && link.is_internal {
@@ -173,12 +165,10 @@ impl Crawler {
                 }
             }
         }
-        
+
         // Sort by depth, then by URL
-        results.sort_by(|a, b| {
-            a.depth.cmp(&b.depth).then_with(|| a.url.cmp(&b.url))
-        });
-        
+        results.sort_by(|a, b| a.depth.cmp(&b.depth).then_with(|| a.url.cmp(&b.url)));
+
         Ok(results)
     }
 
@@ -191,13 +181,13 @@ impl Crawler {
         converter: &HtmlToMarkdown,
     ) -> Result<(CrawlResult, Vec<crate::scraper::Link>)> {
         let fetch_result = self.fetcher.fetch(url).await?;
-        
+
         // Parse HTML (synchronous operations)
         let doc = parser.parse(&fetch_result.content);
         let title = parser.extract_title(&doc);
         let markdown = converter.convert(&fetch_result.content)?;
         let links = parser.extract_links(&doc, url)?;
-        
+
         let result = CrawlResult {
             url: url.to_string(),
             title,
@@ -207,20 +197,20 @@ impl Crawler {
             last_modified: fetch_result.last_modified,
             depth,
         };
-        
+
         Ok((result, links))
     }
 
     /// Crawl a single page.
     pub async fn crawl_page(&self, url: &str) -> Result<CrawlResult> {
         let fetch_result = self.fetcher.fetch(url).await?;
-        
+
         let parser = HtmlParser::new();
         let doc = parser.parse(&fetch_result.content);
         let title = parser.extract_title(&doc);
         let converter = HtmlToMarkdown::new();
         let markdown = converter.convert(&fetch_result.content)?;
-        
+
         Ok(CrawlResult {
             url: url.to_string(),
             title,
@@ -240,14 +230,14 @@ impl Crawler {
                 return false;
             }
         }
-        
+
         // Check exclude patterns
         for pattern in &self.config.exclude_patterns {
             if pattern.is_match(url) {
                 return false;
             }
         }
-        
+
         // Check include patterns (if any)
         if !self.config.include_patterns.is_empty() {
             let mut matches = false;
@@ -261,7 +251,7 @@ impl Crawler {
                 return false;
             }
         }
-        
+
         true
     }
 

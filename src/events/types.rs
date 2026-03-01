@@ -115,10 +115,7 @@ pub enum EventPayload {
     /// Job status changed.
     JobStatusChange(Job),
     /// Job progress updated.
-    JobProgress {
-        job: Job,
-        progress: JobProgress,
-    },
+    JobProgress { job: Job, progress: JobProgress },
     /// Library changed.
     LibraryChange,
     /// Job list changed.
@@ -175,12 +172,30 @@ mod tests {
 
     #[test]
     fn test_job_status_to_version_status() {
-        assert_eq!(VersionStatus::from(JobStatus::Queued), VersionStatus::Queued);
-        assert_eq!(VersionStatus::from(JobStatus::Running), VersionStatus::Running);
-        assert_eq!(VersionStatus::from(JobStatus::Completed), VersionStatus::Completed);
-        assert_eq!(VersionStatus::from(JobStatus::Failed), VersionStatus::Failed);
-        assert_eq!(VersionStatus::from(JobStatus::Cancelled), VersionStatus::Cancelled);
-        assert_eq!(VersionStatus::from(JobStatus::Cancelling), VersionStatus::Running);
+        assert_eq!(
+            VersionStatus::from(JobStatus::Queued),
+            VersionStatus::Queued
+        );
+        assert_eq!(
+            VersionStatus::from(JobStatus::Running),
+            VersionStatus::Running
+        );
+        assert_eq!(
+            VersionStatus::from(JobStatus::Completed),
+            VersionStatus::Completed
+        );
+        assert_eq!(
+            VersionStatus::from(JobStatus::Failed),
+            VersionStatus::Failed
+        );
+        assert_eq!(
+            VersionStatus::from(JobStatus::Cancelled),
+            VersionStatus::Cancelled
+        );
+        assert_eq!(
+            VersionStatus::from(JobStatus::Cancelling),
+            VersionStatus::Running
+        );
     }
 
     #[test]

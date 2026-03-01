@@ -11,13 +11,11 @@ struct Migration {
 }
 
 /// All migrations in order.
-const MIGRATIONS: &[Migration] = &[
-    Migration {
-        version: 1,
-        name: "initial_schema",
-        sql: include_str!("../../migrations/001_initial_schema.sql"),
-    },
-];
+const MIGRATIONS: &[Migration] = &[Migration {
+    version: 1,
+    name: "initial_schema",
+    sql: include_str!("../../migrations/001_initial_schema.sql"),
+}];
 
 /// Run all pending migrations.
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -27,7 +25,7 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
             version INTEGER PRIMARY KEY,
             name TEXT NOT NULL,
             applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        );"
+        );",
     )?;
 
     // Get current version
@@ -49,16 +47,16 @@ pub fn run_migrations(conn: &Connection) -> Result<()> {
                 migration.version,
                 migration.name
             );
-            
+
             conn.execute_batch(migration.sql)?;
-            
+
             conn.with_connection(|c| {
                 c.execute(
                     "INSERT INTO _migrations (version, name) VALUES (?1, ?2)",
                     rusqlite::params![migration.version, migration.name],
                 )
             })?;
-            
+
             tracing::info!(
                 "Migration {} ({}) completed",
                 migration.version,

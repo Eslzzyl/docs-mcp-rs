@@ -15,7 +15,7 @@ impl Connection {
     /// Open a new database connection at the specified path.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
-        
+
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
@@ -33,10 +33,9 @@ impl Connection {
              PRAGMA journal_mode = WAL;
              PRAGMA synchronous = NORMAL;
              PRAGMA cache_size = -64000;
-             PRAGMA temp_store = MEMORY;"
-        ).map_err(|e| {
-            Error::Database(format!("Failed to set pragmas: {}", e))
-        })?;
+             PRAGMA temp_store = MEMORY;",
+        )
+        .map_err(|e| Error::Database(format!("Failed to set pragmas: {}", e)))?;
 
         Ok(Self {
             inner: Arc::new(Mutex::new(conn)),
@@ -45,15 +44,11 @@ impl Connection {
 
     /// Open an in-memory database (for testing).
     pub fn in_memory() -> Result<Self> {
-        let conn = RusqliteConnection::open_in_memory().map_err(|e| {
-            Error::Database(format!("Failed to create in-memory database: {}", e))
-        })?;
+        let conn = RusqliteConnection::open_in_memory()
+            .map_err(|e| Error::Database(format!("Failed to create in-memory database: {}", e)))?;
 
-        conn.execute_batch(
-            "PRAGMA foreign_keys = ON;"
-        ).map_err(|e| {
-            Error::Database(format!("Failed to set pragmas: {}", e))
-        })?;
+        conn.execute_batch("PRAGMA foreign_keys = ON;")
+            .map_err(|e| Error::Database(format!("Failed to set pragmas: {}", e)))?;
 
         Ok(Self {
             inner: Arc::new(Mutex::new(conn)),
@@ -75,9 +70,10 @@ impl Connection {
     where
         F: FnOnce(&RusqliteConnection) -> rusqlite::Result<T>,
     {
-        let conn = self.inner.lock().map_err(|e| {
-            Error::Database(format!("Failed to acquire connection lock: {}", e))
-        })?;
+        let conn = self
+            .inner
+            .lock()
+            .map_err(|e| Error::Database(format!("Failed to acquire connection lock: {}", e)))?;
         f(&conn).map_err(|e| Error::Database(e.to_string()))
     }
 
@@ -86,16 +82,16 @@ impl Connection {
     where
         F: FnOnce(&rusqlite::Transaction) -> rusqlite::Result<T>,
     {
-        let mut conn = self.inner.lock().map_err(|e| {
-            Error::Database(format!("Failed to acquire connection lock: {}", e))
-        })?;
-        let tx = conn.transaction().map_err(|e| {
-            Error::Database(format!("Failed to begin transaction: {}", e))
-        })?;
+        let mut conn = self
+            .inner
+            .lock()
+            .map_err(|e| Error::Database(format!("Failed to acquire connection lock: {}", e)))?;
+        let tx = conn
+            .transaction()
+            .map_err(|e| Error::Database(format!("Failed to begin transaction: {}", e)))?;
         let result = f(&tx).map_err(|e| Error::Database(e.to_string()))?;
-        tx.commit().map_err(|e| {
-            Error::Database(format!("Failed to commit transaction: {}", e))
-        })?;
+        tx.commit()
+            .map_err(|e| Error::Database(format!("Failed to commit transaction: {}", e)))?;
         Ok(result)
     }
 

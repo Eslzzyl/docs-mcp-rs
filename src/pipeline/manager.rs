@@ -1,14 +1,16 @@
 //! Pipeline manager for orchestrating job queue.
 
-use crate::core::{ChunkMetadata, NewDocument, NewLibrary, NewPage, NewVersion, Result, ScraperOptions};
+use crate::core::{
+    ChunkMetadata, NewDocument, NewLibrary, NewPage, NewVersion, Result, ScraperOptions,
+};
 use crate::embed::Embedder;
 use crate::events::{Event, EventBus, Job, JobProgress, JobStatus};
 use crate::scraper::{CrawlConfig, Crawler};
 use crate::splitter::MarkdownSplitter;
 use crate::store::{Connection, DocumentStore, LibraryStore, PageStore, VersionStore};
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::{Mutex, RwLock};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -73,7 +75,10 @@ impl PipelineManager {
         }
 
         self.is_running.store(true, Ordering::SeqCst);
-        info!("PipelineManager started with concurrency {}", self.concurrency);
+        info!(
+            "PipelineManager started with concurrency {}",
+            self.concurrency
+        );
     }
 
     /// Stop the pipeline manager.
@@ -156,7 +161,12 @@ impl PipelineManager {
 
     /// Get all jobs.
     pub async fn get_jobs(&self) -> Vec<Job> {
-        self.jobs.lock().await.values().map(|j| j.job.clone()).collect()
+        self.jobs
+            .lock()
+            .await
+            .values()
+            .map(|j| j.job.clone())
+            .collect()
     }
 
     /// Get jobs by status.
@@ -173,21 +183,21 @@ impl PipelineManager {
     /// Cancel a job.
     pub async fn cancel_job(&self, job_id: &str) -> Result<()> {
         let mut jobs = self.jobs.lock().await;
-        
+
         if let Some(internal_job) = jobs.get_mut(job_id) {
             match internal_job.job.status {
                 JobStatus::Queued => {
                     // Remove from queue
                     let mut queue = self.queue.lock().await;
                     queue.retain(|id| id != job_id);
-                    
+
                     // Update status
                     internal_job.job.status = JobStatus::Cancelled;
                     internal_job.job.finished_at = Some(chrono::Utc::now().timestamp_millis());
-                    
+
                     let job = internal_job.job.clone();
                     drop(jobs);
-                    
+
                     self.event_bus.emit(Event::job_status_change(job));
                     info!("Job cancelled (was queued): {}", job_id);
                 }
@@ -195,7 +205,7 @@ impl PipelineManager {
                     // Signal cancellation
                     internal_job.job.status = JobStatus::Cancelling;
                     internal_job.cancel_token.cancel();
-                    
+
                     info!("Signalling cancellation for running job: {}", job_id);
                 }
                 _ => {
@@ -219,7 +229,7 @@ impl PipelineManager {
                     JobStatus::Completed => return Ok(()),
                     JobStatus::Failed => {
                         return Err(crate::core::Error::Mcp(
-                            job.error.unwrap_or_else(|| "Job failed".to_string())
+                            job.error.unwrap_or_else(|| "Job failed".to_string()),
                         ));
                     }
                     JobStatus::Cancelled => {
@@ -230,14 +240,21 @@ impl PipelineManager {
                     }
                 }
             } else {
-                return Err(crate::core::Error::Mcp(format!("Job not found: {}", job_id)));
+                return Err(crate::core::Error::Mcp(format!(
+                    "Job not found: {}",
+                    job_id
+                )));
             }
         }
     }
 
     /// Clear completed jobs.
     pub async fn clear_completed(&self) -> usize {
-        let completed_statuses = [JobStatus::Completed, JobStatus::Failed, JobStatus::Cancelled];
+        let completed_statuses = [
+            JobStatus::Completed,
+            JobStatus::Failed,
+            JobStatus::Cancelled,
+        ];
         let mut jobs = self.jobs.lock().await;
         let mut count = 0;
 
@@ -267,7 +284,7 @@ impl PipelineManager {
         }
 
         let running_count = *self.running_count.lock().await;
-        
+
         if running_count >= self.concurrency {
             return;
         }
@@ -301,10 +318,10 @@ impl PipelineManager {
             if let Some(internal_job) = jobs_guard.get_mut(job_id) {
                 internal_job.job.status = JobStatus::Running;
                 internal_job.job.started_at = Some(chrono::Utc::now().timestamp_millis());
-                
+
                 let job = internal_job.job.clone();
                 drop(jobs_guard);
-                
+
                 event_bus.emit(Event::job_status_change(job));
             } else {
                 *self.running_count.lock().await -= 1;
@@ -341,7 +358,8 @@ impl PipelineManager {
                 &cancel_token,
                 &event_bus,
                 &jobs,
-            ).await;
+            )
+            .await;
 
             // Update final status
             {
@@ -364,7 +382,7 @@ impl PipelineManager {
                         }
                     }
                     internal_job.job.finished_at = Some(chrono::Utc::now().timestamp_millis());
-                    
+
                     let job = internal_job.job.clone();
                     event_bus.emit(Event::job_status_change(job));
                 }
@@ -421,14 +439,15 @@ async fn execute_job_internal(
 
     // Build crawler config from options
     let config = CrawlConfig::from(options.clone());
-    
+
     let crawler = Crawler::new(config)?;
     let splitter = MarkdownSplitter::new();
 
     // Get library and version info
     let (library, version) = {
         let jobs_guard = jobs.lock().await;
-        jobs_guard.get(job_id)
+        jobs_guard
+            .get(job_id)
             .map(|j| (j.job.library.clone(), j.job.version.clone()))
             .unwrap_or((String::new(), String::new()))
     };
@@ -438,7 +457,7 @@ async fn execute_job_internal(
     let version_store = VersionStore::new(connection);
     let page_store = PageStore::new(connection);
     let doc_store = DocumentStore::new(connection);
-    
+
     // Find or create library
     let lib = match library_store.find_by_name(&library)? {
         Some(l) => l,
@@ -510,7 +529,7 @@ async fn execute_job_internal(
         // Split content into chunks
         if !crawl_result.content.is_empty() {
             let chunks = splitter.split(&crawl_result.content);
-            
+
             if !chunks.is_empty() {
                 // Generate embeddings for all chunks
                 let texts: Vec<&str> = chunks.iter().map(|c| c.content.as_str()).collect();
@@ -532,7 +551,7 @@ async fn execute_job_internal(
 
                 // Store documents
                 doc_store.create_batch(&documents)?;
-                
+
                 debug!(
                     "[{}] Stored {} chunks from {}",
                     job_id,

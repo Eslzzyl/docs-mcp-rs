@@ -18,7 +18,7 @@ impl<'a> PageStore<'a> {
     /// Create a new page (or update if exists).
     pub fn upsert(&self, page: &NewPage) -> Result<Page> {
         let now = Utc::now().to_rfc3339();
-        
+
         self.conn.with_transaction(|tx| {
             tx.execute(
                 "INSERT INTO pages (version_id, url, title, etag, last_modified, content_type, depth, created_at, updated_at)
@@ -41,9 +41,9 @@ impl<'a> PageStore<'a> {
                     now,
                 ],
             )?;
-            
+
             let id = tx.last_insert_rowid();
-            
+
             Ok(Page {
                 id,
                 version_id: page.version_id,
@@ -66,7 +66,7 @@ impl<'a> PageStore<'a> {
                 "SELECT id, version_id, url, title, etag, last_modified, content_type, depth, created_at, updated_at
                  FROM pages WHERE id = ?1"
             )?;
-            
+
             let result = stmt.query_row(rusqlite::params![id], |row| {
                 Ok(Page {
                     id: row.get(0)?,
@@ -83,7 +83,7 @@ impl<'a> PageStore<'a> {
                         .and_then(|s| s.parse::<DateTime<Utc>>().ok()),
                 })
             });
-            
+
             match result {
                 Ok(page) => Ok(Some(page)),
                 Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
@@ -99,7 +99,7 @@ impl<'a> PageStore<'a> {
                 "SELECT id, version_id, url, title, etag, last_modified, content_type, depth, created_at, updated_at
                  FROM pages WHERE version_id = ?1 ORDER BY created_at"
             )?;
-            
+
             let pages = stmt.query_map(rusqlite::params![version_id], |row| {
                 Ok(Page {
                     id: row.get(0)?,
@@ -116,7 +116,7 @@ impl<'a> PageStore<'a> {
                         .and_then(|s| s.parse::<DateTime<Utc>>().ok()),
                 })
             })?.collect::<std::result::Result<Vec<_>, _>>()?;
-            
+
             Ok(pages)
         })
     }
@@ -128,7 +128,7 @@ impl<'a> PageStore<'a> {
                 "SELECT id, version_id, url, title, etag, last_modified, content_type, depth, created_at, updated_at
                  FROM pages WHERE version_id = ?1 AND url = ?2"
             )?;
-            
+
             let result = stmt.query_row(rusqlite::params![version_id, url], |row| {
                 Ok(Page {
                     id: row.get(0)?,
@@ -145,7 +145,7 @@ impl<'a> PageStore<'a> {
                         .and_then(|s| s.parse::<DateTime<Utc>>().ok()),
                 })
             });
-            
+
             match result {
                 Ok(page) => Ok(Some(page)),
                 Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
@@ -169,7 +169,10 @@ impl<'a> PageStore<'a> {
     /// Delete all pages for a version.
     pub fn delete_by_version(&self, version_id: i64) -> Result<usize> {
         self.conn.with_connection(|conn| {
-            conn.execute("DELETE FROM pages WHERE version_id = ?1", rusqlite::params![version_id])
+            conn.execute(
+                "DELETE FROM pages WHERE version_id = ?1",
+                rusqlite::params![version_id],
+            )
         })
     }
 
@@ -184,64 +187,76 @@ impl<'a> PageStore<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::{run_migrations, LibraryStore, VersionStore};
     use crate::core::{NewLibrary, NewVersion};
+    use crate::store::{LibraryStore, VersionStore, run_migrations};
 
     #[test]
     fn test_page_crud() {
         let conn = Connection::in_memory().expect("Failed to create connection");
         run_migrations(&conn).expect("Migrations should succeed");
-        
+
         // Create library and version first
         let lib_store = LibraryStore::new(&conn);
-        let library = lib_store.create(&NewLibrary {
-            name: "TestLib".to_string(),
-        }).expect("Failed to create library");
-        
+        let library = lib_store
+            .create(&NewLibrary {
+                name: "TestLib".to_string(),
+            })
+            .expect("Failed to create library");
+
         let ver_store = VersionStore::new(&conn);
-        let version = ver_store.create(&NewVersion {
-            library_id: library.id,
-            name: "1.0.0".to_string(),
-            source_url: None,
-            scraper_options: None,
-        }).expect("Failed to create version");
-        
+        let version = ver_store
+            .create(&NewVersion {
+                library_id: library.id,
+                name: "1.0.0".to_string(),
+                source_url: None,
+                scraper_options: None,
+            })
+            .expect("Failed to create version");
+
         let store = PageStore::new(&conn);
-        
+
         // Create
-        let page = store.upsert(&NewPage {
-            version_id: version.id,
-            url: "https://example.com/docs/page1".to_string(),
-            title: Some("Page 1".to_string()),
-            etag: None,
-            last_modified: None,
-            content_type: Some("text/html".to_string()),
-            depth: 0,
-        }).expect("Failed to create page");
-        
+        let page = store
+            .upsert(&NewPage {
+                version_id: version.id,
+                url: "https://example.com/docs/page1".to_string(),
+                title: Some("Page 1".to_string()),
+                etag: None,
+                last_modified: None,
+                content_type: Some("text/html".to_string()),
+                depth: 0,
+            })
+            .expect("Failed to create page");
+
         assert_eq!(page.url, "https://example.com/docs/page1");
-        
+
         // Find by ID
         let found = store.find_by_id(page.id).expect("Failed to find page");
         assert!(found.is_some());
-        
+
         // Find by version
-        let pages = store.find_by_version(version.id).expect("Failed to find pages");
+        let pages = store
+            .find_by_version(version.id)
+            .expect("Failed to find pages");
         assert_eq!(pages.len(), 1);
-        
+
         // Upsert should update
-        let updated = store.upsert(&NewPage {
-            version_id: version.id,
-            url: "https://example.com/docs/page1".to_string(),
-            title: Some("Updated Title".to_string()),
-            etag: Some("abc123".to_string()),
-            last_modified: None,
-            content_type: Some("text/html".to_string()),
-            depth: 0,
-        }).expect("Failed to update page");
-        
+        let updated = store
+            .upsert(&NewPage {
+                version_id: version.id,
+                url: "https://example.com/docs/page1".to_string(),
+                title: Some("Updated Title".to_string()),
+                etag: Some("abc123".to_string()),
+                last_modified: None,
+                content_type: Some("text/html".to_string()),
+                depth: 0,
+            })
+            .expect("Failed to update page");
+
         assert_eq!(updated.title, Some("Updated Title".to_string()));
-        let pages = store.find_by_version(version.id).expect("Failed to find pages");
+        let pages = store
+            .find_by_version(version.id)
+            .expect("Failed to find pages");
         assert_eq!(pages.len(), 1); // Should still be 1
     }
 }

@@ -19,7 +19,7 @@ impl OpenAIEmbedder {
     /// Create a new OpenAI embedder.
     pub fn new(api_key: String, model: String, dimension: usize) -> Result<Self> {
         let client = HttpClient::new();
-        
+
         Ok(Self {
             client,
             api_key,
@@ -30,9 +30,14 @@ impl OpenAIEmbedder {
     }
 
     /// Create with a custom base URL (for Azure or custom endpoints).
-    pub fn with_base_url(api_key: String, base_url: String, model: String, dimension: usize) -> Result<Self> {
+    pub fn with_base_url(
+        api_key: String,
+        base_url: String,
+        model: String,
+        dimension: usize,
+    ) -> Result<Self> {
         let client = HttpClient::new();
-        
+
         Ok(Self {
             client,
             api_key,
@@ -49,7 +54,7 @@ impl OpenAIEmbedder {
             .find(|(id, _, _)| *id == self.model)
             .map(|(_, d, t)| (*d, *t))
             .unwrap_or((self.dimension, 8191));
-        
+
         EmbeddingModel {
             id: self.model.clone(),
             dimension: dim,
@@ -84,6 +89,7 @@ enum EmbeddingInput {
 #[derive(Deserialize)]
 struct EmbeddingResponse {
     data: Vec<EmbeddingData>,
+    #[allow(dead_code)]
     usage: Option<Usage>,
 }
 
@@ -97,6 +103,7 @@ struct EmbeddingData {
 /// Usage information.
 #[derive(Deserialize)]
 struct Usage {
+    #[allow(dead_code)]
     total_tokens: i32,
 }
 
@@ -112,7 +119,9 @@ impl Embedder for OpenAIEmbedder {
 
     async fn embed(&self, text: &str) -> Result<Vec<f32>> {
         let embeddings = self.embed_batch(&[text]).await?;
-        embeddings.into_iter().next()
+        embeddings
+            .into_iter()
+            .next()
             .ok_or_else(|| Error::Embedding("No embedding returned".to_string()))
     }
 
@@ -122,14 +131,15 @@ impl Embedder for OpenAIEmbedder {
         } else {
             EmbeddingInput::Multiple(texts.iter().map(|s| s.to_string()).collect())
         };
-        
+
         let request = EmbeddingRequest {
             model: self.model.clone(),
             input,
             dimensions: Some(self.dimension),
         };
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post(self.get_embed_url())
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
@@ -137,7 +147,7 @@ impl Embedder for OpenAIEmbedder {
             .send()
             .await
             .map_err(|e| Error::Http(format!("OpenAI API request failed: {}", e)))?;
-        
+
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
@@ -146,26 +156,24 @@ impl Embedder for OpenAIEmbedder {
                 status, body
             )));
         }
-        
+
         let result: EmbeddingResponse = response
             .json()
             .await
             .map_err(|e| Error::Embedding(format!("Failed to parse response: {}", e)))?;
-        
+
         // Sort by index to maintain order
         let mut embeddings: Vec<(i32, Vec<f32>)> = result
             .data
             .into_iter()
             .map(|e| {
-                let embedding = e.embedding.into_iter()
-                    .map(|f| f as f32)
-                    .collect();
+                let embedding = e.embedding.into_iter().map(|f| f as f32).collect();
                 (e.index, embedding)
             })
             .collect();
-        
+
         embeddings.sort_by_key(|(i, _)| *i);
-        
+
         // Pad or truncate to expected dimension
         let result: Vec<Vec<f32>> = embeddings
             .into_iter()
@@ -174,7 +182,7 @@ impl Embedder for OpenAIEmbedder {
                 emb
             })
             .collect();
-        
+
         Ok(result)
     }
 }
@@ -189,8 +197,9 @@ mod tests {
             "test-key".to_string(),
             "text-embedding-3-small".to_string(),
             1536,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let info = embedder.model_info();
         assert_eq!(info.id, "text-embedding-3-small");
         assert_eq!(info.dimension, 1536);

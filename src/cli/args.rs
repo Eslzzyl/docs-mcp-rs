@@ -12,7 +12,12 @@ pub struct Cli {
     pub database: String,
 
     /// Embedding model to use (e.g., "openai:text-embedding-3-small" or "google:text-embedding-004").
-    #[arg(short, long, global = true, default_value = "openai:text-embedding-3-small")]
+    #[arg(
+        short,
+        long,
+        global = true,
+        default_value = "openai:text-embedding-3-small"
+    )]
     pub model: String,
 
     /// OpenAI API key (or set OPENAI_API_KEY env var).

@@ -55,7 +55,7 @@ impl TextSplitter {
 
         while start < text.len() {
             let end = self.find_chunk_end(text, start);
-            
+
             let chunk_text = text[start..end].trim();
             if !chunk_text.is_empty() {
                 chunks.push(TextChunk::new(
@@ -72,7 +72,7 @@ impl TextSplitter {
             } else {
                 end.saturating_sub(self.config.chunk_overlap)
             };
-            
+
             if next_start <= start {
                 // Prevent infinite loop
                 start = end;
@@ -87,7 +87,7 @@ impl TextSplitter {
     /// Find the end position of a chunk.
     fn find_chunk_end(&self, text: &str, start: usize) -> usize {
         let ideal_end = start + self.config.chunk_size;
-        
+
         if ideal_end >= text.len() {
             return text.len();
         }
@@ -96,7 +96,7 @@ impl TextSplitter {
             // Try to find a word boundary
             let search_start = ideal_end.saturating_sub(100);
             let search_text = &text[search_start..ideal_end + 100.min(text.len() - ideal_end)];
-            
+
             // Look for word boundary
             for (i, c) in search_text.char_indices() {
                 if i + search_start >= ideal_end && c.is_whitespace() {
@@ -209,7 +209,7 @@ mod tests {
         let text = "This is a test. ".repeat(100);
         let splitter = TextSplitter::new();
         let chunks = splitter.split(&text);
-        
+
         assert!(!chunks.is_empty());
         for chunk in &chunks {
             assert!(chunk.content.len() <= splitter.config.chunk_size + 100); // Allow some flexibility
@@ -228,7 +228,7 @@ mod tests {
         let text = "This is a small text.";
         let splitter = TextSplitter::new();
         let chunks = splitter.split(text);
-        
+
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0].content, text);
     }
@@ -238,7 +238,7 @@ mod tests {
         let text = "Paragraph 1.\n\nParagraph 2.\n\nParagraph 3.";
         let splitter = TextSplitter::new();
         let chunks = splitter.split_by_separators(text, &["\n\n", "\n", ". ", " "]);
-        
+
         assert!(!chunks.is_empty());
     }
 }

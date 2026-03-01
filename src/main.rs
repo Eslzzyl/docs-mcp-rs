@@ -6,13 +6,15 @@ use clap::Parser;
 use docs_mcp_rs::cli::{Cli, Commands};
 use docs_mcp_rs::core::Config;
 use docs_mcp_rs::core::config::{EmbeddingConfig, EmbeddingProvider};
+use docs_mcp_rs::core::types::VersionStatus;
 use docs_mcp_rs::embed::{Embedder, create_embedder};
 use docs_mcp_rs::events::EventBus;
 use docs_mcp_rs::mcp::DocsMcpServer;
 use docs_mcp_rs::pipeline::{PipelineManager, ScraperOptions};
-use docs_mcp_rs::store::{Connection, DocumentStore, LibraryStore, PageStore, VectorSearch, VersionStore, run_migrations};
-use docs_mcp_rs::core::types::VersionStatus;
-use docs_mcp_rs::web::{create_router_with_mcp, AppState};
+use docs_mcp_rs::store::{
+    Connection, DocumentStore, LibraryStore, PageStore, VectorSearch, VersionStore, run_migrations,
+};
+use docs_mcp_rs::web::{AppState, create_router_with_mcp};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -26,7 +28,7 @@ async fn main() {
 
     // Build configuration
     let mut config = Config::default();
-    
+
     // Parse embedding model
     let model_parts: Vec<&str> = cli.model.splitn(2, ':').collect();
     let (provider, model_id) = match model_parts.as_slice() {
@@ -43,9 +45,17 @@ async fn main() {
     config.embedding = EmbeddingConfig {
         provider: embedding_provider,
         openai_api_key: cli.openai_key.clone(),
-        openai_model: if provider == "openai" { model_id.clone() } else { "text-embedding-3-small".to_string() },
+        openai_model: if provider == "openai" {
+            model_id.clone()
+        } else {
+            "text-embedding-3-small".to_string()
+        },
         google_api_key: cli.google_key.clone(),
-        google_model: if provider == "google" { model_id.clone() } else { "text-embedding-004".to_string() },
+        google_model: if provider == "google" {
+            model_id.clone()
+        } else {
+            "text-embedding-004".to_string()
+        },
         ..Default::default()
     };
 
@@ -70,21 +80,35 @@ async fn main() {
     // Execute command
     let connection = Arc::new(conn);
     let result = match cli.command {
-        Commands::Serve { port, stdio } => {
-            run_serve(connection, &config, port, stdio).await
+        Commands::Serve { port, stdio } => run_serve(connection, &config, port, stdio).await,
+        Commands::Scrape {
+            library,
+            url,
+            version,
+            max_pages,
+            max_depth,
+            concurrency,
+        } => {
+            run_scrape(
+                connection,
+                &config,
+                library,
+                url,
+                version,
+                max_pages,
+                max_depth,
+                concurrency,
+            )
+            .await
         }
-        Commands::Scrape { library, url, version, max_pages, max_depth, concurrency } => {
-            run_scrape(connection, &config, library, url, version, max_pages, max_depth, concurrency).await
-        }
-        Commands::Search { library, query, version, limit } => {
-            run_search(connection, &config, library, query, version, limit).await
-        }
-        Commands::List => {
-            run_list(connection).await
-        }
-        Commands::Remove { library, version } => {
-            run_remove(connection, library, version).await
-        }
+        Commands::Search {
+            library,
+            query,
+            version,
+            limit,
+        } => run_search(connection, &config, library, query, version, limit).await,
+        Commands::List => run_list(connection).await,
+        Commands::Remove { library, version } => run_remove(connection, library, version).await,
     };
 
     if let Err(e) = result {
@@ -120,10 +144,10 @@ async fn run_serve(
 
     if stdio {
         println!("🚀 MCP server starting in stdio mode...");
-        
+
         // Create MCP server
         let server = DocsMcpServer::new(config.clone(), (*connection).clone())?;
-        
+
         // Run stdio server
         server.run().await
     } else {
@@ -141,11 +165,8 @@ async fn run_serve(
 
         // Create router with MCP endpoint
         let config_arc = Arc::new(config.clone());
-        let mcp_service = DocsMcpServer::create_http_service(
-            config_arc,
-            connection.clone(),
-            embedder.clone(),
-        );
+        let mcp_service =
+            DocsMcpServer::create_http_service(config_arc, connection.clone(), embedder.clone());
         let app = create_router_with_mcp(state, mcp_service);
 
         // Create TCP listener
@@ -188,12 +209,7 @@ async fn run_scrape(
     let event_bus = EventBus::new();
 
     // Create pipeline manager
-    let pipeline = PipelineManager::new(
-        connection.clone(),
-        embedder,
-        event_bus,
-        concurrency,
-    );
+    let pipeline = PipelineManager::new(connection.clone(), embedder, event_bus, concurrency);
 
     // Start pipeline
     pipeline.start().await;
@@ -205,12 +221,14 @@ async fn run_scrape(
         ..Default::default()
     };
 
-    let job_id = pipeline.enqueue(
-        library.clone(),
-        version.clone().unwrap_or_default(),
-        url.clone(),
-        options,
-    ).await?;
+    let job_id = pipeline
+        .enqueue(
+            library.clone(),
+            version.clone().unwrap_or_default(),
+            url.clone(),
+            options,
+        )
+        .await?;
 
     println!("📝 Job enqueued: {}", job_id);
 
@@ -256,11 +274,16 @@ async fn run_search(
     let embedding = embedder.embed(&query).await?;
 
     // Search
-    let search = VectorSearch::with_options(&connection, docs_mcp_rs::store::SearchOptions {
-        limit,
-        ..Default::default()
-    });
-    let results = search.search(&library, version.as_deref(), &embedding, &query).await?;
+    let search = VectorSearch::with_options(
+        &connection,
+        docs_mcp_rs::store::SearchOptions {
+            limit,
+            ..Default::default()
+        },
+    );
+    let results = search
+        .search(&library, version.as_deref(), &embedding, &query)
+        .await?;
 
     if results.is_empty() {
         println!("No results found.");
@@ -275,9 +298,11 @@ async fn run_search(
             println!("Title: {}", title);
         }
         println!("URL: {}", result.page.url);
-        
+
         // Print a preview of the content
-        let preview = result.document.content
+        let preview = result
+            .document
+            .content
             .chars()
             .take(200)
             .collect::<String>();
@@ -305,7 +330,7 @@ async fn run_list(connection: Arc<Connection>) -> docs_mcp_rs::core::Result<()> 
         let versions = version_store.find_by_library(lib.id)?;
 
         println!("📚 {} ({} version(s))", lib.name, versions.len());
-        
+
         for v in versions {
             let status = match v.status {
                 VersionStatus::Completed => "✅",
@@ -316,7 +341,12 @@ async fn run_list(connection: Arc<Connection>) -> docs_mcp_rs::core::Result<()> 
                 VersionStatus::NotIndexed => "❓",
                 VersionStatus::Updating => "🔄",
             };
-            println!("   {} {} {}", status, v.name, v.source_url.as_deref().unwrap_or(""));
+            println!(
+                "   {} {} {}",
+                status,
+                v.name,
+                v.source_url.as_deref().unwrap_or("")
+            );
         }
         println!();
     }

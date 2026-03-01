@@ -5,5 +5,5 @@ mod types;
 mod worker;
 
 pub use manager::PipelineManager;
-pub use types::{JobCallbacks, Job, JobProgress, JobStatus, ScraperOptions};
+pub use types::{Job, JobCallbacks, JobProgress, JobStatus, ScraperOptions};
 pub use worker::PipelineWorker;

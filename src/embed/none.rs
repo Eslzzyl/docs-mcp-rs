@@ -1,8 +1,8 @@
 //! No-op embedder for fallback when no API key is configured.
 
 use crate::core::{Error, Result};
-use async_trait::async_trait;
 use crate::embed::Embedder;
+use async_trait::async_trait;
 
 /// A no-op embedder that returns an error when embedding is attempted.
 /// This is used as a fallback when no embedding API key is configured.
@@ -37,13 +37,15 @@ impl Embedder for NoneEmbedder {
 
     async fn embed(&self, _text: &str) -> Result<Vec<f32>> {
         Err(Error::Embedding(
-            "Embedding not available: no API key configured. Use FTS-only search instead.".to_string()
+            "Embedding not available: no API key configured. Use FTS-only search instead."
+                .to_string(),
         ))
     }
 
     async fn embed_batch(&self, _texts: &[&str]) -> Result<Vec<Vec<f32>>> {
         Err(Error::Embedding(
-            "Embedding not available: no API key configured. Use FTS-only search instead.".to_string()
+            "Embedding not available: no API key configured. Use FTS-only search instead."
+                .to_string(),
         ))
     }
 }

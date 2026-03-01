@@ -19,7 +19,7 @@ impl GoogleEmbedder {
     /// Create a new Google embedder.
     pub fn new(api_key: String, model: String, dimension: usize) -> Result<Self> {
         let client = HttpClient::new();
-        
+
         Ok(Self {
             client,
             api_key,
@@ -30,9 +30,14 @@ impl GoogleEmbedder {
     }
 
     /// Create with custom base URL.
-    pub fn with_base_url(api_key: String, model: String, dimension: usize, base_url: String) -> Result<Self> {
+    pub fn with_base_url(
+        api_key: String,
+        model: String,
+        dimension: usize,
+        base_url: String,
+    ) -> Result<Self> {
         let client = HttpClient::new();
-        
+
         Ok(Self {
             client,
             api_key,
@@ -49,7 +54,7 @@ impl GoogleEmbedder {
             .find(|(id, _, _)| *id == self.model)
             .map(|(_, d, t)| (*d, *t))
             .unwrap_or((self.dimension, 2048));
-        
+
         EmbeddingModel {
             id: self.model.clone(),
             dimension: dim,
@@ -129,17 +134,20 @@ impl Embedder for GoogleEmbedder {
     async fn embed(&self, text: &str) -> Result<Vec<f32>> {
         let request = EmbedRequest {
             content: Content {
-                parts: vec![Part { text: text.to_string() }],
+                parts: vec![Part {
+                    text: text.to_string(),
+                }],
             },
         };
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post(self.get_embed_url())
             .json(&request)
             .send()
             .await
             .map_err(|e| Error::Http(format!("Google API request failed: {}", e)))?;
-        
+
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
@@ -148,15 +156,15 @@ impl Embedder for GoogleEmbedder {
                 status, body
             )));
         }
-        
+
         let result: EmbedResponse = response
             .json()
             .await
             .map_err(|e| Error::Embedding(format!("Failed to parse response: {}", e)))?;
-        
+
         let mut embedding = result.embedding.values;
         embedding.resize(self.dimension, 0.0);
-        
+
         Ok(embedding)
     }
 
@@ -164,26 +172,29 @@ impl Embedder for GoogleEmbedder {
         // Google's batch API has a limit, so we process in smaller batches
         let batch_size = 100;
         let mut all_embeddings = Vec::with_capacity(texts.len());
-        
+
         for chunk in texts.chunks(batch_size) {
             let requests: Vec<EmbedRequest> = chunk
                 .iter()
                 .map(|text| EmbedRequest {
                     content: Content {
-                        parts: vec![Part { text: text.to_string() }],
+                        parts: vec![Part {
+                            text: text.to_string(),
+                        }],
                     },
                 })
                 .collect();
-            
+
             let request = BatchEmbedRequest { requests };
-            
-            let response = self.client
+
+            let response = self
+                .client
                 .post(self.get_batch_embed_url())
                 .json(&request)
                 .send()
                 .await
                 .map_err(|e| Error::Http(format!("Google API request failed: {}", e)))?;
-            
+
             if !response.status().is_success() {
                 let status = response.status();
                 let body = response.text().await.unwrap_or_default();
@@ -192,18 +203,18 @@ impl Embedder for GoogleEmbedder {
                     status, body
                 )));
             }
-            
+
             let result: BatchEmbedResponse = response
                 .json()
                 .await
                 .map_err(|e| Error::Embedding(format!("Failed to parse response: {}", e)))?;
-            
+
             for mut emb in result.embeddings.into_iter().map(|e| e.values) {
                 emb.resize(self.dimension, 0.0);
                 all_embeddings.push(emb);
             }
         }
-        
+
         Ok(all_embeddings)
     }
 }
@@ -218,8 +229,9 @@ mod tests {
             "test-key".to_string(),
             "text-embedding-004".to_string(),
             768,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let info = embedder.model_info();
         assert_eq!(info.id, "text-embedding-004");
         assert_eq!(info.dimension, 768);
