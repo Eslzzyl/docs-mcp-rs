@@ -32,7 +32,7 @@ impl Connection {
             "PRAGMA foreign_keys = ON;
              PRAGMA journal_mode = WAL;
              PRAGMA synchronous = NORMAL;
-             PRAGMA cache_size = -64000; // 64MB cache
+             PRAGMA cache_size = -64000;
              PRAGMA temp_store = MEMORY;"
         ).map_err(|e| {
             Error::Database(format!("Failed to set pragmas: {}", e))

@@ -12,6 +12,7 @@ use docs_mcp_rs::mcp::DocsMcpServer;
 use docs_mcp_rs::pipeline::{PipelineManager, ScraperOptions};
 use docs_mcp_rs::store::{Connection, DocumentStore, LibraryStore, PageStore, VectorSearch, VersionStore, run_migrations};
 use docs_mcp_rs::core::types::VersionStatus;
+use docs_mcp_rs::web::{create_router, AppState};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -106,22 +107,46 @@ async fn run_serve(
     let event_bus = EventBus::new();
 
     // Create pipeline manager
-    let pipeline = PipelineManager::new(
+    let pipeline = Arc::new(PipelineManager::new(
         connection.clone(),
         embedder.clone(),
         event_bus.clone(),
         config.scraper.max_concurrency,
-    );
+    ));
 
     // Start pipeline
     pipeline.start().await;
 
     if let Some(p) = port {
         println!("🚀 MCP HTTP server starting on port {}", p);
-        println!("⚠️  HTTP mode not yet implemented. Use stdio mode for now.");
-        // TODO: Implement HTTP server with axum
-        // For now, just wait
-        tokio::signal::ctrl_c().await.ok();
+        println!("📍 Web UI: http://localhost:{}", p);
+
+        // Create web app state
+        let state = AppState {
+            connection: connection.clone(),
+            embedder: embedder.clone(),
+            pipeline: pipeline.clone(),
+            event_bus: event_bus.clone(),
+        };
+
+        // Create router
+        let app = create_router(state);
+
+        // Create TCP listener
+        let addr = std::net::SocketAddr::from(([0, 0, 0, 0], p));
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+
+        println!("✅ Server listening on http://{}", addr);
+        println!("Press Ctrl+C to stop");
+
+        // Run server
+        axum::serve(listener, app)
+            .await
+            .map_err(|e| docs_mcp_rs::core::Error::Mcp(e.to_string()))?;
+
+        // Stop pipeline on shutdown
+        pipeline.stop().await;
+
         Ok(())
     } else {
         println!("🚀 MCP server starting in stdio mode...");

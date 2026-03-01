@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Docs MCP - Documentation Search</title>
+        <link rel="stylesheet" href="/style.css" />
+    </head>
+    <body>
+        <div class="container">
+            <header>
+                <h1>Docs MCP</h1>
+                <p class="subtitle">Documentation indexing and search server</p>
+            </header>
+
+            <main>
+                <!-- Tabs -->
+                <div class="tabs">
+                    <button class="tab active" data-tab="libraries">
+                        Libraries
+                    </button>
+                    <button class="tab" data-tab="jobs">Jobs</button>
+                    <button class="tab" data-tab="scrape">Add Library</button>
+                </div>
+
+                <!-- Libraries Tab -->
+                <section id="libraries-tab" class="tab-content active">
+                    <div class="section-header">
+                        <h2>Indexed Libraries</h2>
+                        <button
+                            class="btn btn-secondary"
+                            id="refresh-libraries"
+                        >
+                            Refresh
+                        </button>
+                    </div>
+                    <div id="libraries-list" class="card-list">
+                        <p class="loading">Loading...</p>
+                    </div>
+                </section>
+
+                <!-- Jobs Tab -->
+                <section id="jobs-tab" class="tab-content">
+                    <div class="section-header">
+                        <h2>Active Jobs</h2>
+                        <button class="btn btn-secondary" id="clear-jobs">
+                            Clear Completed
+                        </button>
+                    </div>
+                    <div id="jobs-list" class="card-list">
+                        <p class="loading">No jobs running</p>
+                    </div>
+                </section>
+
+                <!-- Scrape Tab -->
+                <section id="scrape-tab" class="tab-content">
+                    <h2>Add New Library</h2>
+                    <form id="scrape-form" class="form">
+                        <div class="form-group">
+                            <label for="url">Documentation URL</label>
+                            <input
+                                type="url"
+                                id="url"
+                                name="url"
+                                placeholder="https://docs.example.com"
+                                required
+                            />
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="library">Library Name</label>
+                                <input
+                                    type="text"
+                                    id="library"
+                                    name="library"
+                                    placeholder="my-library"
+                                    required
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label for="version">Version (optional)</label>
+                                <input
+                                    type="text"
+                                    id="version"
+                                    name="version"
+                                    placeholder="latest"
+                                />
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="max-pages">Max Pages</label>
+                                <input
+                                    type="number"
+                                    id="max-pages"
+                                    name="max_pages"
+                                    value="1000"
+                                    min="1"
+                                />
+                            </div>
+                            <div class="form-group">
+                                <label for="max-depth">Max Depth</label>
+                                <input
+                                    type="number"
+                                    id="max-depth"
+                                    name="max_depth"
+                                    value="3"
+                                    min="1"
+                                />
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">
+                                Start Scraping
+                            </button>
+                        </div>
+                    </form>
+                </section>
+
+                <!-- Search Section -->
+                <section class="search-section">
+                    <h2>Search Documentation</h2>
+                    <div class="search-box">
+                        <select id="search-library">
+                            <option value="">Select library...</option>
+                        </select>
+                        <input
+                            type="text"
+                            id="search-query"
+                            placeholder="Enter search query..."
+                        />
+                        <button class="btn btn-primary" id="search-btn">
+                            Search
+                        </button>
+                    </div>
+                    <div id="search-results" class="search-results"></div>
+                </section>
+            </main>
+
+            <!-- Toast Notification -->
+            <div id="toast" class="toast hidden"></div>
+        </div>
+
+        <script src="/app.js"></script>
+    </body>
+</html>
