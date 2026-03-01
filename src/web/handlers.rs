@@ -292,6 +292,13 @@ async fn delete_version(
     State(state): State<AppState>,
     Path((name, version)): Path<(String, String)>,
 ) -> Json<ApiResponse<()>> {
+    // Convert special marker for empty version
+    let version = if version == "_default_" {
+        String::new()
+    } else {
+        version
+    };
+
     let lib_store = LibraryStore::new(&state.connection);
     let ver_store = VersionStore::new(&state.connection);
 

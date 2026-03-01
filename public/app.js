@@ -123,15 +123,50 @@ function setupEventListeners() {
 // API Functions
 async function fetchAPI(endpoint, options = {}) {
   try {
-    const response = await fetch(`${API_BASE}${endpoint}`, {
-      headers: {
-        "Content-Type": "application/json",
-      },
+    const fetchOptions = {
       ...options,
-    });
-    return await response.json();
+    };
+
+    // Only set Content-Type if there's a body and it's not FormData
+    if (options.body && !(options.body instanceof FormData)) {
+      fetchOptions.headers = {
+        "Content-Type": "application/json",
+        ...options.headers,
+      };
+    }
+
+    const url = `${API_BASE}${endpoint}`;
+    console.log(`[API] ${options.method || 'GET'} ${url}`, fetchOptions);
+
+    const response = await fetch(url, fetchOptions);
+
+    console.log(`[API] Response status: ${response.status} ${response.statusText}`);
+    console.log(`[API] Response headers:`, [...response.headers.entries()]);
+
+    // Get response text first to check if it's empty
+    const responseText = await response.text();
+    console.log(`[API] Response body:`, responseText);
+
+    // Try to parse as JSON if there's content
+    if (responseText.trim()) {
+      try {
+        const json = JSON.parse(responseText);
+        console.log(`[API] Parsed JSON:`, json);
+        return json;
+      } catch (parseError) {
+        console.error(`[API] JSON parse error:`, parseError);
+        return { success: false, error: `Invalid JSON: ${parseError.message}` };
+      }
+    }
+
+    // If no content, return success based on status
+    if (response.ok) {
+      return { success: true };
+    }
+
+    return { success: false, error: `HTTP ${response.status}: ${response.statusText}` };
   } catch (error) {
-    console.error("API Error:", error);
+    console.error("[API] Error:", error);
     return { success: false, error: error.message };
   }
 }
@@ -166,14 +201,18 @@ function renderLibraryCard(lib) {
     lib.versions.length > 0
       ? lib.versions
           .map(
-            (v) => `
+            (v) => {
+              const versionName = v.name || "";
+              const displayName = versionName || "latest";
+              return `
             <div class="version-item">
                 <span class="status ${v.status}"></span>
-                <span>${v.name || "latest"}</span>
+                <span>${displayName}</span>
                 <span class="card-meta">${v.page_count} pages</span>
-                <button class="btn btn-danger btn-sm" onclick="deleteVersion('${lib.name}', '${v.name}')">Delete</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteVersion('${lib.name}', '${versionName}')">Delete</button>
             </div>
-        `,
+        `;
+            },
           )
           .join("")
       : '<span class="card-meta">No versions</span>';
@@ -231,11 +270,13 @@ function renderJobCard(job) {
   const progressHtml =
     job.status === "running" && progress
       ? `
-            <div class="progress-bar">
-                <div class="progress-fill" style="width: ${progressPercent}%"></div>
+            <div class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${progressPercent}%"></div>
+                </div>
+                <p class="card-meta progress-text">${progress.pages_scraped}/${progress.total_pages} pages (${progressPercent}%)</p>
+                <p class="card-meta current-url">Current: ${progress.current_url || "Starting..."}</p>
             </div>
-            <p class="card-meta">${progress.pages_scraped}/${progress.total_pages} pages (${progressPercent}%)</p>
-            <p class="card-meta">Current: ${progress.current_url || "Starting..."}</p>
         `
       : "";
 
@@ -350,16 +391,29 @@ function renderSearchResult(result) {
 
 // Delete Version
 async function deleteVersion(library, version) {
-  if (!confirm(`Delete ${library}@${version}? This cannot be undone.`)) {
+  console.log(`[deleteVersion] Starting deletion for ${library}@${version}`);
+
+  const displayVersion = version || "latest";
+  if (!confirm(`Delete ${library}@${displayVersion}? This cannot be undone.`)) {
+    console.log(`[deleteVersion] Cancelled by user`);
     return;
   }
 
-  const result = await fetchAPI(
-    `/libraries/${encodeURIComponent(library)}/versions/${encodeURIComponent(version)}`,
-    {
-      method: "DELETE",
-    },
-  );
+  const encodedLibrary = encodeURIComponent(library);
+  // Use special marker for empty version to avoid routing issues
+  const versionParam = version || "_default_";
+  const encodedVersion = encodeURIComponent(versionParam);
+  const endpoint = `/libraries/${encodedLibrary}/versions/${encodedVersion}`;
+
+  console.log(`[deleteVersion] Library: "${library}" -> encoded: "${encodedLibrary}"`);
+  console.log(`[deleteVersion] Version: "${version}" -> param: "${versionParam}" -> encoded: "${encodedVersion}"`);
+  console.log(`[deleteVersion] Full endpoint: ${endpoint}`);
+
+  const result = await fetchAPI(endpoint, {
+    method: "DELETE",
+  });
+
+  console.log(`[deleteVersion] Result:`, result);
 
   if (result.success) {
     showToast("Version deleted", "success");
@@ -460,24 +514,44 @@ function updateJobProgress(job, progress) {
     statusEl.textContent = job.status;
   }
 
-  // Update progress bar
+  // Update progress bar and text
   if (progress) {
     const percent = Math.round(
       (progress.pages_scraped / progress.total_pages) * 100,
     );
-    const progressFill = card.querySelector(".progress-fill");
+
+    // Find or create progress container
+    let progressContainer = card.querySelector(".progress-container");
+    if (!progressContainer) {
+      progressContainer = document.createElement("div");
+      progressContainer.className = "progress-container";
+      progressContainer.innerHTML = `
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: ${percent}%"></div>
+        </div>
+        <p class="card-meta progress-text"></p>
+        <p class="card-meta current-url"></p>
+      `;
+      card.querySelector(".card-body").appendChild(progressContainer);
+    }
+
+    // Update progress bar
+    const progressFill = progressContainer.querySelector(".progress-fill");
     if (progressFill) {
       progressFill.style.width = `${percent}%`;
     }
 
     // Update progress text
-    let progressText = card.querySelector(".progress-text");
-    if (!progressText) {
-      progressText = document.createElement("p");
-      progressText.className = "card-meta progress-text";
-      card.querySelector(".card-body").appendChild(progressText);
+    const progressText = progressContainer.querySelector(".progress-text");
+    if (progressText) {
+      progressText.textContent = `${progress.pages_scraped}/${progress.total_pages} pages (${percent}%)`;
     }
-    progressText.textContent = `${progress.pages_scraped}/${progress.total_pages} pages (${percent}%)`;
+
+    // Update current URL
+    const currentUrlEl = progressContainer.querySelector(".current-url");
+    if (currentUrlEl) {
+      currentUrlEl.textContent = `Current: ${progress.current_url || "Starting..."}`;
+    }
   }
 }
 
