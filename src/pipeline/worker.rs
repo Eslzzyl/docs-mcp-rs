@@ -141,8 +141,6 @@ impl PipelineWorker {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_worker_creation() {
         // Just test that the type exists

@@ -571,8 +571,6 @@ async fn execute_job_internal(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[tokio::test]
     async fn test_manager_creation() {
         // Would need mock connection for real tests

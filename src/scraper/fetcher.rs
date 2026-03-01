@@ -143,7 +143,7 @@ mod tests {
 
     #[test]
     fn test_fetcher_creation() {
-        let fetcher = Fetcher::with_defaults();
+        Fetcher::with_defaults();
         assert!(true); // Just check it doesn't panic
     }
 }

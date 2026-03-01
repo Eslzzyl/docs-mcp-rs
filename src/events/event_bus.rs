@@ -93,8 +93,7 @@ impl Drop for EventReceiver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::events::{Job, JobProgress, JobStatus};
-    use std::time::Instant;
+    use crate::events::{EventType, Job};
 
     #[tokio::test]
     async fn test_event_bus_emit_subscribe() {
