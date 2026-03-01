@@ -477,17 +477,20 @@ async fn execute_job_internal(
         })?,
     };
 
-    // Crawl the site
-    let crawl_results = crawler.crawl(source_url).await?;
-    let total_pages = crawl_results.len();
+    // Crawl the site using streaming
+    let mut rx = crawler.crawl_stream(source_url).await?;
     let mut pages_scraped = 0;
+    let mut total_pages = 0usize;
 
-    debug!("[{}] Found {} pages to process", job_id, total_pages);
+    debug!("[{}] Starting stream crawl", job_id);
 
-    // Get embedder for batch processing
+    // Get embedder for processing
     let embedder_guard = embedder.read().await;
 
-    for crawl_result in crawl_results {
+    // Process pages as they arrive from the stream
+    while let Some(crawl_result) = rx.recv().await {
+        total_pages += 1;
+
         // Check for cancellation
         if cancel_token.is_cancelled() {
             return Err(crate::core::Error::Mcp("Job cancelled".to_string()));
@@ -533,7 +536,13 @@ async fn execute_job_internal(
             if !chunks.is_empty() {
                 // Generate embeddings for all chunks
                 let texts: Vec<&str> = chunks.iter().map(|c| c.content.as_str()).collect();
-                let embeddings = embedder_guard.embed_batch(&texts).await?;
+                let embeddings = match embedder_guard.embed_batch(&texts).await {
+                    Ok(embs) => embs,
+                    Err(e) => {
+                        warn!("[{}] Failed to generate embeddings for {}: {}", job_id, crawl_result.url, e);
+                        continue;
+                    }
+                };
 
                 // Create documents
                 let documents: Vec<NewDocument> = chunks
@@ -550,7 +559,10 @@ async fn execute_job_internal(
                     .collect();
 
                 // Store documents
-                doc_store.create_batch(&documents)?;
+                if let Err(e) = doc_store.create_batch(&documents) {
+                    warn!("[{}] Failed to store documents for {}: {}", job_id, crawl_result.url, e);
+                    continue;
+                }
 
                 debug!(
                     "[{}] Stored {} chunks from {}",

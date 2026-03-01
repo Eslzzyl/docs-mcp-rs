@@ -6,6 +6,10 @@ use async_trait::async_trait;
 use reqwest::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 
+/// Maximum batch size for embedding requests.
+/// SiliconFlow API has a limit of 64 items per batch.
+const MAX_BATCH_SIZE: usize = 64;
+
 /// OpenAI embedding provider.
 pub struct OpenAIEmbedder {
     client: HttpClient,
@@ -65,6 +69,68 @@ impl OpenAIEmbedder {
     /// Get the API URL for embeddings.
     fn get_embed_url(&self) -> String {
         format!("{}/embeddings", self.base_url)
+    }
+
+    /// Embed a single chunk of texts (max MAX_BATCH_SIZE items).
+    async fn embed_batch_chunk(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
+        let input = if texts.len() == 1 {
+            EmbeddingInput::Single(texts[0].to_string())
+        } else {
+            EmbeddingInput::Multiple(texts.iter().map(|s| s.to_string()).collect())
+        };
+
+        let request = EmbeddingRequest {
+            model: self.model.clone(),
+            input,
+            dimensions: Some(self.dimension),
+        };
+
+        let response = self
+            .client
+            .post(self.get_embed_url())
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await
+            .map_err(|e| Error::Http(format!("OpenAI API request failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(Error::Embedding(format!(
+                "OpenAI API error ({}): {}",
+                status, body
+            )));
+        }
+
+        let result: EmbeddingResponse = response
+            .json()
+            .await
+            .map_err(|e| Error::Embedding(format!("Failed to parse response: {}", e)))?;
+
+        // Sort by index to maintain order
+        let mut embeddings: Vec<(i32, Vec<f32>)> = result
+            .data
+            .into_iter()
+            .map(|e| {
+                let embedding = e.embedding.into_iter().map(|f| f as f32).collect();
+                (e.index, embedding)
+            })
+            .collect();
+
+        embeddings.sort_by_key(|(i, _)| *i);
+
+        // Pad or truncate to expected dimension
+        let result: Vec<Vec<f32>> = embeddings
+            .into_iter()
+            .map(|(_, mut emb)| {
+                emb.resize(self.dimension, 0.0);
+                emb
+            })
+            .collect();
+
+        Ok(result)
     }
 }
 
@@ -126,64 +192,19 @@ impl Embedder for OpenAIEmbedder {
     }
 
     async fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
-        let input = if texts.len() == 1 {
-            EmbeddingInput::Single(texts[0].to_string())
-        } else {
-            EmbeddingInput::Multiple(texts.iter().map(|s| s.to_string()).collect())
-        };
-
-        let request = EmbeddingRequest {
-            model: self.model.clone(),
-            input,
-            dimensions: Some(self.dimension),
-        };
-
-        let response = self
-            .client
-            .post(self.get_embed_url())
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| Error::Http(format!("OpenAI API request failed: {}", e)))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            return Err(Error::Embedding(format!(
-                "OpenAI API error ({}): {}",
-                status, body
-            )));
+        // If batch is small enough, process directly
+        if texts.len() <= MAX_BATCH_SIZE {
+            return self.embed_batch_chunk(texts).await;
         }
 
-        let result: EmbeddingResponse = response
-            .json()
-            .await
-            .map_err(|e| Error::Embedding(format!("Failed to parse response: {}", e)))?;
+        // Split large batches into smaller chunks
+        let mut all_embeddings = Vec::with_capacity(texts.len());
+        for chunk in texts.chunks(MAX_BATCH_SIZE) {
+            let chunk_embeddings = self.embed_batch_chunk(chunk).await?;
+            all_embeddings.extend(chunk_embeddings);
+        }
 
-        // Sort by index to maintain order
-        let mut embeddings: Vec<(i32, Vec<f32>)> = result
-            .data
-            .into_iter()
-            .map(|e| {
-                let embedding = e.embedding.into_iter().map(|f| f as f32).collect();
-                (e.index, embedding)
-            })
-            .collect();
-
-        embeddings.sort_by_key(|(i, _)| *i);
-
-        // Pad or truncate to expected dimension
-        let result: Vec<Vec<f32>> = embeddings
-            .into_iter()
-            .map(|(_, mut emb)| {
-                emb.resize(self.dimension, 0.0);
-                emb
-            })
-            .collect();
-
-        Ok(result)
+        Ok(all_embeddings)
     }
 }
 

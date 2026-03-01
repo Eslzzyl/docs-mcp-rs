@@ -4,6 +4,7 @@ use crate::core::{Error, Result};
 use regex::Regex;
 use scraper::{Html, Selector};
 use std::collections::HashSet;
+use tracing::{debug, trace};
 use url::Url;
 
 /// A extracted link.
@@ -42,10 +43,12 @@ impl HtmlParser {
 
     /// Extract the title from HTML.
     pub fn extract_title(&self, document: &Html) -> Option<String> {
-        document
+        let title = document
             .select(&self.title_selector)
             .next()
-            .map(|el| el.text().collect::<String>().trim().to_string())
+            .map(|el| el.text().collect::<String>().trim().to_string());
+        trace!("Extracted title: {:?}", title);
+        title
     }
 
     /// Extract meta description.
@@ -60,31 +63,39 @@ impl HtmlParser {
     pub fn extract_main_content(&self, document: &Html) -> String {
         // Try to find main content areas
         let main_selectors = [
-            Selector::parse("main").ok(),
-            Selector::parse("article").ok(),
-            Selector::parse("[role=\"main\"]").ok(),
-            Selector::parse(".content").ok(),
-            Selector::parse(".documentation").ok(),
-            Selector::parse(".docs").ok(),
-            Selector::parse("#content").ok(),
-            Selector::parse("#main").ok(),
+            ("main", Selector::parse("main").ok()),
+            ("article", Selector::parse("article").ok()),
+            ("[role='main']", Selector::parse("[role=\"main\"]").ok()),
+            (".content", Selector::parse(".content").ok()),
+            (".documentation", Selector::parse(".documentation").ok()),
+            (".docs", Selector::parse(".docs").ok()),
+            ("#content", Selector::parse("#content").ok()),
+            ("#main", Selector::parse("#main").ok()),
         ];
 
-        for selector in main_selectors.iter().flatten() {
-            if let Some(el) = document.select(selector).next() {
-                return el.text().collect::<String>();
+        for (name, selector) in main_selectors.iter() {
+            if let Some(sel) = selector {
+                if let Some(el) = document.select(sel).next() {
+                    let content = el.text().collect::<String>();
+                    debug!("Extracted main content using selector '{}': {} chars", name, content.len());
+                    return content;
+                }
             }
         }
 
         // Fallback: extract body text
         if let Ok(body_selector) = Selector::parse("body") {
             if let Some(body) = document.select(&body_selector).next() {
-                return body.text().collect::<String>();
+                let content = body.text().collect::<String>();
+                debug!("Extracted main content from body: {} chars", content.len());
+                return content;
             }
         }
 
         // Last resort: all text
-        document.root_element().text().collect()
+        let content: String = document.root_element().text().collect();
+        debug!("Extracted main content from root: {} chars", content.len());
+        content
     }
 
     /// Extract links from HTML.
@@ -92,13 +103,28 @@ impl HtmlParser {
         let base = Url::parse(base_url)
             .map_err(|e| Error::InvalidUrl(format!("Invalid base URL: {}", e)))?;
 
+        trace!("Extracting links from HTML with base URL: {}", base_url);
+
         let mut links = Vec::new();
         let mut seen = HashSet::new();
+        let mut skipped_empty = 0;
+        let mut skipped_javascript = 0;
+        let mut skipped_anchor = 0;
+        let mut skipped_duplicate = 0;
 
         for element in document.select(&self.link_selector) {
             if let Some(href) = element.value().attr("href") {
                 // Skip empty, javascript, and anchor links
-                if href.is_empty() || href.starts_with("javascript:") || href.starts_with('#') {
+                if href.is_empty() {
+                    skipped_empty += 1;
+                    continue;
+                }
+                if href.starts_with("javascript:") {
+                    skipped_javascript += 1;
+                    continue;
+                }
+                if href.starts_with('#') {
+                    skipped_anchor += 1;
                     continue;
                 }
 
@@ -116,12 +142,16 @@ impl HtmlParser {
                     // Relative URL
                     match base.join(href) {
                         Ok(url) => url.to_string(),
-                        Err(_) => continue,
+                        Err(e) => {
+                            trace!("Failed to resolve relative URL '{}': {}", href, e);
+                            continue;
+                        }
                     }
                 };
 
                 // Skip duplicates
                 if seen.contains(&resolved_url) {
+                    skipped_duplicate += 1;
                     continue;
                 }
                 seen.insert(resolved_url.clone());
@@ -132,6 +162,8 @@ impl HtmlParser {
                 // Get link text
                 let text = element.text().collect::<String>().trim().to_string();
 
+                trace!("Found link: {} -> {} (internal: {})", href, resolved_url, is_internal);
+
                 links.push(Link {
                     url: resolved_url,
                     text,
@@ -139,6 +171,9 @@ impl HtmlParser {
                 });
             }
         }
+
+        debug!("Link extraction complete: {} unique links found (skipped: {} empty, {} javascript, {} anchors, {} duplicates)",
+               links.len(), skipped_empty, skipped_javascript, skipped_anchor, skipped_duplicate);
 
         Ok(links)
     }

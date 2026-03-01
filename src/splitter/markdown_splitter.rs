@@ -2,6 +2,7 @@
 
 use crate::core::ChunkMetadata;
 use crate::splitter::{SplitConfig, TextChunk};
+use tracing::{debug, trace, warn};
 
 /// Markdown splitter that splits by headers and sections.
 pub struct MarkdownSplitter {
@@ -23,15 +24,29 @@ impl MarkdownSplitter {
 
     /// Split markdown text into chunks, respecting header structure.
     pub fn split(&self, markdown: &str) -> Vec<TextChunk> {
+        let input_len = markdown.len();
+        debug!("Starting markdown split: input_length={}", input_len);
+
+        if markdown.trim().is_empty() {
+            warn!("Attempted to split empty markdown content");
+            return Vec::new();
+        }
+
         let sections = self.parse_sections(markdown);
+        debug!("Parsed {} sections from markdown", sections.len());
+
         let mut chunks = Vec::new();
         let mut sort_order = 0;
 
-        for section in sections {
-            let section_chunks = self.split_section(&section, &mut sort_order);
+        for (idx, section) in sections.iter().enumerate() {
+            trace!("Processing section {}: level={}, title='{}', content_length={}",
+                   idx, section.level, section.title, section.content.len());
+            let section_chunks = self.split_section(section, &mut sort_order);
+            trace!("Section {} produced {} chunks", idx, section_chunks.len());
             chunks.extend(section_chunks);
         }
 
+        debug!("Markdown split complete: {} chunks produced from {} sections", chunks.len(), sections.len());
         chunks
     }
 
@@ -99,21 +114,29 @@ impl MarkdownSplitter {
     fn build_path(&self, sections: &[Section], header: &Header) -> Vec<String> {
         let mut path = Vec::new();
 
+        // Skip if header level is 0 or negative (invalid)
+        if header.level <= 0 {
+            trace!("Skipping path build for invalid header level: {}", header.level);
+            return path;
+        }
+
         // Find all parent headers
         for section in sections {
-            if section.level < header.level {
-                if path.len() < (section.level as usize) {
-                    path.resize(section.level as usize, String::new());
+            if section.level < header.level && section.level > 0 {
+                let level_idx = section.level as usize;
+                if path.len() < level_idx {
+                    path.resize(level_idx, String::new());
                 }
-                path[(section.level as usize) - 1] = section.title.clone();
+                path[level_idx - 1] = section.title.clone();
             }
         }
 
         // Add current header
-        if path.len() < (header.level as usize) {
-            path.resize(header.level as usize, String::new());
+        let header_level = header.level as usize;
+        if path.len() < header_level {
+            path.resize(header_level, String::new());
         }
-        path[(header.level as usize) - 1] = header.title.clone();
+        path[header_level - 1] = header.title.clone();
 
         // Remove empty entries
         path.retain(|s| !s.is_empty());
@@ -124,13 +147,25 @@ impl MarkdownSplitter {
     /// Split a section into chunks if it exceeds the chunk size.
     fn split_section(&self, section: &Section, sort_order: &mut i32) -> Vec<TextChunk> {
         let content = section.content.trim();
+        let content_len = content.len();
+
+        trace!("Splitting section: title='{}', level={}, content_length={}",
+               section.title, section.level, content_len);
 
         // Handle empty content
         if content.is_empty() {
+            trace!("Skipping empty section: '{}'", section.title);
             return Vec::new();
         }
 
-        if content.len() <= self.config.chunk_size {
+        // Handle sections with invalid level (content before first header)
+        if section.level <= 0 {
+            trace!("Processing content section with level 0: {} bytes", content_len);
+        }
+
+        if content_len <= self.config.chunk_size {
+            trace!("Section '{}' fits in single chunk ({} <= {})",
+                   section.title, content_len, self.config.chunk_size);
             return vec![TextChunk::new(
                 content.to_string(),
                 ChunkMetadata {
@@ -146,14 +181,28 @@ impl MarkdownSplitter {
             )];
         }
 
+        debug!("Section '{}' needs splitting: {} bytes > chunk_size {}",
+               section.title, content_len, self.config.chunk_size);
+
         // Split large sections
         let mut chunks = Vec::new();
         let mut start = 0;
-        let content_len = content.len();
+        let mut chunk_num = 0;
 
         while start < content_len {
+            // Ensure start is at a character boundary
+            start = align_to_char_boundary(content, start);
+            if start >= content_len {
+                break;
+            }
+
             let end = self.find_split_point(content, start);
+            // Ensure end is at a character boundary
+            let end = align_to_char_boundary(content, end);
             let chunk_content = content[start..end].trim();
+
+            trace!("Creating chunk {}: bytes [{}..{}] ({} bytes)",
+                   chunk_num, start, end, chunk_content.len());
 
             if !chunk_content.is_empty() {
                 chunks.push(TextChunk::new(
@@ -170,22 +219,29 @@ impl MarkdownSplitter {
                     *sort_order,
                 ));
                 *sort_order += 1;
+                chunk_num += 1;
+            } else {
+                trace!("Skipping empty chunk at bytes [{}..{}]", start, end);
             }
 
             // Prevent infinite loop: ensure we make progress
             let next_start = end.saturating_sub(self.config.chunk_overlap);
             if next_start <= start {
                 // If overlap would cause us to not make progress, move forward by chunk_size
-                start = (start + self.config.chunk_size).min(content_len);
+                let forced_start = (start + self.config.chunk_size).min(content_len);
+                trace!("Forcing progress: {} -> {} (avoiding infinite loop)", start, forced_start);
+                start = forced_start;
             } else {
                 start = next_start;
             }
 
             if start >= content_len {
+                trace!("Reached end of content at byte {}", start);
                 break;
             }
         }
 
+        debug!("Section '{}' split into {} chunks", section.title, chunks.len());
         chunks
     }
 
@@ -193,29 +249,47 @@ impl MarkdownSplitter {
     fn find_split_point(&self, content: &str, start: usize) -> usize {
         let content_len = content.len();
 
+        // Align start to character boundary
+        let start = align_to_char_boundary(content, start);
+
         // Bounds check: ensure start is within content
         if start >= content_len {
+            trace!("find_split_point: start ({}) >= content_len ({}), returning end",
+                   start, content_len);
             return content_len;
         }
 
         let ideal_end = (start + self.config.chunk_size).min(content_len);
 
         if ideal_end == content_len {
+            trace!("find_split_point: ideal_end at content end ({}), returning end", content_len);
             return content_len;
         }
 
         // Try to find paragraph break
-        let search_range = &content[start..ideal_end + 200.min(content.len() - ideal_end)];
+        let search_end = ideal_end + 200.min(content.len() - ideal_end);
+        let search_end = align_to_char_boundary(content, search_end);
+        let search_range = &content[start..search_end];
+
         if let Some(pos) = search_range.rfind("\n\n") {
-            return start + pos + 2;
+            let split_point = start + pos + 2;
+            let split_point = align_to_char_boundary(content, split_point);
+            trace!("find_split_point: found paragraph break at byte {} (ideal: {})",
+                   split_point, ideal_end);
+            return split_point;
         }
 
         // Try to find line break
         if let Some(pos) = search_range.rfind('\n') {
-            return start + pos + 1;
+            let split_point = start + pos + 1;
+            let split_point = align_to_char_boundary(content, split_point);
+            trace!("find_split_point: found line break at byte {} (ideal: {})",
+                   split_point, ideal_end);
+            return split_point;
         }
 
-        ideal_end
+        trace!("find_split_point: no natural break found, using ideal_end: {}", ideal_end);
+        align_to_char_boundary(content, ideal_end)
     }
 }
 
@@ -223,6 +297,27 @@ impl Default for MarkdownSplitter {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Align a byte index to the nearest character boundary.
+/// If the index is not on a character boundary, move it forward to the next boundary.
+fn align_to_char_boundary(content: &str, index: usize) -> usize {
+    if index >= content.len() {
+        return content.len();
+    }
+
+    // Check if already on a boundary
+    if content.is_char_boundary(index) {
+        return index;
+    }
+
+    // Move forward to find the next boundary
+    let mut new_index = index + 1;
+    while new_index < content.len() && !content.is_char_boundary(new_index) {
+        new_index += 1;
+    }
+
+    new_index.min(content.len())
 }
 
 /// A parsed markdown section.
@@ -300,5 +395,82 @@ Content here.
         assert!(metadata.path.is_some());
         let path = metadata.path.as_ref().unwrap();
         assert!(path.contains(&"Level 1".to_string()));
+    }
+
+    #[test]
+    fn test_content_before_header() {
+        // Test markdown that starts with content before any header
+        let markdown = r#"This is some introductory text.
+
+It has multiple paragraphs.
+
+# First Header
+
+Content under first header.
+
+## Second Header
+
+More content.
+"#;
+        let splitter = MarkdownSplitter::new();
+        let chunks = splitter.split(markdown);
+
+        // Should have chunks for the intro text and each section
+        assert!(!chunks.is_empty());
+
+        // Check that intro text is included
+        let intro_chunk = chunks.iter().find(|c| c.content.contains("introductory text"));
+        assert!(intro_chunk.is_some(), "Should have chunk with intro text");
+
+        // Check that headers are included
+        let first_header_chunk = chunks.iter().find(|c| c.content.contains("First Header"));
+        assert!(first_header_chunk.is_some(), "Should have chunk with first header");
+    }
+
+    #[test]
+    fn test_multibyte_utf8_characters() {
+        // Test markdown with multi-byte UTF-8 characters (like emojis, Chinese, special symbols)
+        let markdown = r#"# Test Header
+
+This content has multi-byte characters: … (ellipsis), 🎉 (emoji), 中文 (Chinese).
+
+## Section with more special chars
+
+Some more content here with various Unicode characters: → ← ↑ ↓ ✓ × ÷ • ·
+
+And a longer paragraph with repeated special characters: … … … … … … … … … …
+
+# Another Header
+
+Final section with emojis: 🚀 🌟 💡 🔧 📝
+"#;
+        let splitter = MarkdownSplitter::new();
+        // This should not panic
+        let chunks = splitter.split(markdown);
+
+        // Should produce chunks
+        assert!(!chunks.is_empty(), "Should produce at least one chunk");
+
+        // Check that content is preserved
+        let all_content: String = chunks.iter().map(|c| c.content.as_str()).collect();
+        assert!(all_content.contains("…"), "Should preserve ellipsis character");
+        assert!(all_content.contains("中文"), "Should preserve Chinese characters");
+        assert!(all_content.contains("🎉"), "Should preserve emoji");
+    }
+
+    #[test]
+    fn test_align_to_char_boundary() {
+        // Test the helper function
+        let text = "Hello…World"; // … is 3 bytes
+        // H-e-l-l-o-…-W-o-r-l-d
+        // 0-1-2-3-4-5-6-7-8-9-10 (bytes)
+        // … occupies bytes 5,6,7
+
+        assert_eq!(align_to_char_boundary(text, 0), 0);
+        assert_eq!(align_to_char_boundary(text, 5), 5); // Start of …
+        assert_eq!(align_to_char_boundary(text, 6), 8); // Middle of …, should align to 8 (W)
+        assert_eq!(align_to_char_boundary(text, 7), 8); // End of …, should align to 8 (W)
+        assert_eq!(align_to_char_boundary(text, 8), 8); // W
+        assert_eq!(align_to_char_boundary(text, 100), text.len()); // Beyond end
     }
 }

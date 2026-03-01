@@ -4,6 +4,7 @@ use crate::core::{Error, Result};
 use crate::scraper::HttpClient;
 use reqwest::Response;
 use reqwest::header::{CONTENT_TYPE, ETAG, LAST_MODIFIED};
+use tracing::{debug, trace, warn};
 use url::Url;
 
 /// Result of fetching a URL.
@@ -53,12 +54,15 @@ impl Fetcher {
         etag: Option<&str>,
         last_modified: Option<&str>,
     ) -> Result<FetchResult> {
+        debug!("Fetching URL: {} (etag: {:?}, last_modified: {:?})", url, etag, last_modified);
+
         // Validate URL
         let parsed_url = Url::parse(url)
             .map_err(|e| Error::InvalidUrl(format!("Invalid URL {}: {}", url, e)))?;
 
         // Only allow http and https
         if parsed_url.scheme() != "http" && parsed_url.scheme() != "https" {
+            warn!("Unsupported URL scheme for {}: {}", url, parsed_url.scheme());
             return Err(Error::InvalidUrl(format!(
                 "Unsupported URL scheme: {}",
                 parsed_url.scheme()
@@ -69,13 +73,16 @@ impl Fetcher {
         let mut request = self.client.inner().get(url);
 
         if let Some(etag) = etag {
+            trace!("Adding If-None-Match header: {}", etag);
             request = request.header("If-None-Match", etag);
         }
         if let Some(last_modified) = last_modified {
+            trace!("Adding If-Modified-Since header: {}", last_modified);
             request = request.header("If-Modified-Since", last_modified);
         }
 
         // Send request
+        trace!("Sending HTTP GET request to: {}", url);
         let response = request
             .send()
             .await
@@ -84,13 +91,17 @@ impl Fetcher {
         let status = response.status().as_u16();
         let final_url = response.url().to_string();
 
+        debug!("Received response for {}: status={}, final_url={}", url, status, final_url);
+
         // Handle 304 Not Modified
         if status == 304 {
+            trace!("Content not modified (304) for: {}", url);
             return Err(Error::NotFound(format!("Not modified: {}", url)));
         }
 
         // Handle error status codes
         if !response.status().is_success() {
+            warn!("HTTP error for {}: status={}", url, status);
             return Err(Error::Http(format!("HTTP {} for {}", status, url)));
         }
 
@@ -99,11 +110,17 @@ impl Fetcher {
         let last_modified = extract_header(&response, LAST_MODIFIED);
         let content_type = extract_header(&response, CONTENT_TYPE);
 
+        trace!("Response headers for {}: etag={:?}, last_modified={:?}, content_type={:?}",
+               url, etag, last_modified, content_type);
+
         // Read body
+        trace!("Reading response body for: {}", url);
         let content = response
             .text()
             .await
             .map_err(|e| Error::Http(format!("Failed to read response body: {}", e)))?;
+
+        debug!("Successfully fetched {}: content_length={}", url, content.len());
 
         Ok(FetchResult {
             url: url.to_string(),

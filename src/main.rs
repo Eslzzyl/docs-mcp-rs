@@ -33,10 +33,22 @@ async fn main() {
     let mut config = Config::default();
 
     // Parse embedding model
+    // Format: "provider:model" (e.g., "openai:text-embedding-3-small")
+    // If no provider prefix, defaults to "openai" and uses the whole string as model name
     let model_parts: Vec<&str> = cli.model.splitn(2, ':').collect();
     let (provider, model_id) = match model_parts.as_slice() {
         [provider, model] => (*provider, (*model).to_string()),
-        [provider] => (*provider, "default".to_string()),
+        [model] => {
+            // No provider prefix, check if it looks like a provider name or a model name
+            let m = (*model).to_lowercase();
+            if m == "openai" || m == "google" {
+                // It's just a provider name without model, use default model
+                ((*model), "default".to_string())
+            } else {
+                // It's a model name without provider prefix, default to openai
+                ("openai", (*model).to_string())
+            }
+        }
         _ => ("openai", "text-embedding-3-small".to_string()),
     };
 

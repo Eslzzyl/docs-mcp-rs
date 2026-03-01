@@ -9,7 +9,7 @@ use crate::splitter::MarkdownSplitter;
 use crate::store::{Connection, DocumentStore, LibraryStore, PageStore, VersionStore};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Pipeline worker for executing scraping jobs.
 ///
@@ -78,15 +78,18 @@ impl PipelineWorker {
         // Update status to running
         version_store.update_status(ver.id, crate::core::types::VersionStatus::Running)?;
 
-        // Crawl the site
-        let crawl_results = crawler.crawl(source_url).await?;
-        let total_pages = crawl_results.len();
+        // Crawl the site using streaming
+        let mut rx = crawler.crawl_stream(source_url).await?;
         let mut pages_processed = 0;
+        let mut total_pages = 0usize;
 
         // Get embedder
         let embedder_guard = self.embedder.read().await;
 
-        for crawl_result in crawl_results {
+        // Process pages as they arrive from the stream
+        while let Some(crawl_result) = rx.recv().await {
+            total_pages += 1;
+
             // Create page record
             let page = page_store.upsert(&NewPage {
                 version_id: ver.id,
@@ -105,7 +108,13 @@ impl PipelineWorker {
                 if !chunks.is_empty() {
                     // Generate embeddings
                     let texts: Vec<&str> = chunks.iter().map(|c| c.content.as_str()).collect();
-                    let embeddings = embedder_guard.embed_batch(&texts).await?;
+                    let embeddings = match embedder_guard.embed_batch(&texts).await {
+                        Ok(embs) => embs,
+                        Err(e) => {
+                            warn!("Failed to generate embeddings for {}: {}", crawl_result.url, e);
+                            continue;
+                        }
+                    };
 
                     // Create documents
                     let documents: Vec<NewDocument> = chunks
@@ -121,11 +130,15 @@ impl PipelineWorker {
                         })
                         .collect();
 
-                    doc_store.create_batch(&documents)?;
+                    if let Err(e) = doc_store.create_batch(&documents) {
+                        warn!("Failed to store documents for {}: {}", crawl_result.url, e);
+                        continue;
+                    }
                 }
             }
 
             pages_processed += 1;
+            debug!("Processed page {}/{}: {}", pages_processed, total_pages, crawl_result.url);
         }
 
         // Update version status to completed
