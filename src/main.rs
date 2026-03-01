@@ -12,7 +12,7 @@ use docs_mcp_rs::mcp::DocsMcpServer;
 use docs_mcp_rs::pipeline::{PipelineManager, ScraperOptions};
 use docs_mcp_rs::store::{Connection, DocumentStore, LibraryStore, PageStore, VectorSearch, VersionStore, run_migrations};
 use docs_mcp_rs::core::types::VersionStatus;
-use docs_mcp_rs::web::{create_router, create_router_with_mcp, AppState};
+use docs_mcp_rs::web::{create_router_with_mcp, AppState};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -70,8 +70,8 @@ async fn main() {
     // Execute command
     let connection = Arc::new(conn);
     let result = match cli.command {
-        Commands::Serve { port, mcp } => {
-            run_serve(connection, &config, port, mcp).await
+        Commands::Serve { port, stdio } => {
+            run_serve(connection, &config, port, stdio).await
         }
         Commands::Scrape { library, url, version, max_pages, max_depth, concurrency } => {
             run_scrape(connection, &config, library, url, version, max_pages, max_depth, concurrency).await
@@ -97,8 +97,8 @@ async fn main() {
 async fn run_serve(
     connection: Arc<Connection>,
     config: &Config,
-    port: Option<u16>,
-    enable_mcp: bool,
+    port: u16,
+    stdio: bool,
 ) -> docs_mcp_rs::core::Result<()> {
     // Create embedder
     let embedder = create_embedder(&config.embedding)?;
@@ -118,9 +118,18 @@ async fn run_serve(
     // Start pipeline
     pipeline.start().await;
 
-    if let Some(p) = port {
-        println!("🚀 HTTP server starting on port {}", p);
-        println!("📍 Web UI: http://localhost:{}", p);
+    if stdio {
+        println!("🚀 MCP server starting in stdio mode...");
+        
+        // Create MCP server
+        let server = DocsMcpServer::new(config.clone(), (*connection).clone())?;
+        
+        // Run stdio server
+        server.run().await
+    } else {
+        println!("🚀 HTTP server starting on port {}", port);
+        println!("📍 Web UI: http://localhost:{}", port);
+        println!("📍 MCP HTTP: http://localhost:{}/mcp", port);
 
         // Create web app state
         let state = AppState {
@@ -130,22 +139,17 @@ async fn run_serve(
             event_bus: event_bus.clone(),
         };
 
-        // Create router with or without MCP endpoint
-        let app = if enable_mcp {
-            println!("📍 MCP HTTP: http://localhost:{}/mcp", p);
-            let config_arc = Arc::new(config.clone());
-            let mcp_service = DocsMcpServer::create_http_service(
-                config_arc,
-                connection.clone(),
-                embedder.clone(),
-            );
-            create_router_with_mcp(state, mcp_service)
-        } else {
-            create_router(state)
-        };
+        // Create router with MCP endpoint
+        let config_arc = Arc::new(config.clone());
+        let mcp_service = DocsMcpServer::create_http_service(
+            config_arc,
+            connection.clone(),
+            embedder.clone(),
+        );
+        let app = create_router_with_mcp(state, mcp_service);
 
         // Create TCP listener
-        let addr = std::net::SocketAddr::from(([0, 0, 0, 0], p));
+        let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
         let listener = tokio::net::TcpListener::bind(addr).await?;
 
         println!("✅ Server listening on http://{}", addr);
@@ -160,14 +164,6 @@ async fn run_serve(
         pipeline.stop().await;
 
         Ok(())
-    } else {
-        println!("🚀 MCP server starting in stdio mode...");
-        
-        // Create MCP server
-        let server = DocsMcpServer::new(config.clone(), (*connection).clone())?;
-        
-        // Run stdio server
-        server.run().await
     }
 }
 

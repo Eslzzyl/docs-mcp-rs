@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 #[command(version, about, long_about = None)]
 pub struct Cli {
     /// Path to the database file.
-    #[arg(short, long, global = true, default_value = "docs.db")]
+    #[arg(short, long, global = true, default_value = "./data/docs.db")]
     pub database: String,
 
     /// Embedding model to use (e.g., "openai:text-embedding-3-small" or "google:text-embedding-004").
@@ -30,16 +30,15 @@ pub struct Cli {
 /// Available CLI commands.
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Start the MCP server (stdio mode by default).
+    /// Start the MCP server (HTTP mode by default).
     Serve {
-        /// Port for HTTP mode (if specified, runs as HTTP server instead of stdio).
-        #[arg(short, long)]
-        port: Option<u16>,
+        /// Port for HTTP server.
+        #[arg(short, long, default_value = "26301")]
+        port: u16,
 
-        /// Enable MCP Streamable HTTP transport endpoint at /mcp.
-        /// Only applicable when --port is specified.
-        #[arg(long, default_value = "true", action = clap::ArgAction::Set)]
-        mcp: bool,
+        /// Run in stdio mode instead of HTTP mode.
+        #[arg(long)]
+        stdio: bool,
     },
 
     /// Scrape and index documentation from a URL.
