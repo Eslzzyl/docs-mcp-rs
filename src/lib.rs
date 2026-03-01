@@ -8,4 +8,6 @@ pub mod store;
 pub mod scraper;
 pub mod splitter;
 pub mod embed;
+pub mod events;
+pub mod pipeline;
 pub mod mcp;
