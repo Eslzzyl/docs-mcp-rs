@@ -17,7 +17,7 @@ pub struct SplitConfig {
 impl Default for SplitConfig {
     fn default() -> Self {
         Self {
-            chunk_size: 1000,
+            chunk_size: 1500,
             chunk_overlap: 200,
             preserve_words: true,
         }

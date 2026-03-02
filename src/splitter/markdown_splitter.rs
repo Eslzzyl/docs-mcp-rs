@@ -51,8 +51,10 @@ impl MarkdownSplitter {
     }
 
     /// Parse markdown into sections based on headers.
+    /// Sections that only contain a header (no content) will be merged with the next section.
     fn parse_sections(&self, markdown: &str) -> Vec<Section> {
-        let mut sections = Vec::new();
+        let mut sections: Vec<Section> = Vec::new();
+        let mut pending_header_sections: Vec<Section> = Vec::new();
         let mut current_section = Section::default();
 
         for line in markdown.lines() {
@@ -60,17 +62,55 @@ impl MarkdownSplitter {
 
             // Check for headers
             if let Some(header) = self.parse_header(trimmed) {
-                // Save current section if it has content
-                if !current_section.content.is_empty() {
-                    sections.push(current_section);
-                }
+                // Check if current section has content beyond just the header
+                // A section with only header has content like "# Title\n\n" (ends with \n\n and no other text)
+                let content_trimmed = current_section.content.trim();
+                let has_real_content = !content_trimmed.is_empty() &&
+                    // Check if there's content after the header (not just the header line)
+                    (current_section.level == 0 || // Content before first header always counts
+                     content_trimmed.len() > current_section.title.len() + 3); // +3 for "# " and possible extra chars
 
-                // Start new section
+                if has_real_content {
+                    // Prepend any pending header-only sections to this section
+                    let mut final_content = current_section.content.clone();
+                    let mut final_level = current_section.level;
+                    let mut final_title = current_section.title.clone();
+                    let mut final_path = current_section.path.clone();
+
+                    // Merge pending headers in reverse order (oldest first)
+                    for pending in pending_header_sections.drain(..).rev() {
+                        final_content = format!("{}\n\n{}", pending.content.trim(), final_content.trim());
+                        // Update the path to include the parent headers
+                        if final_level > pending.level {
+                            let mut new_path = pending.path.clone();
+                            new_path.push(pending.title.clone());
+                            final_path = new_path;
+                        }
+                        // If the current section was just content (level 0), adopt the first pending header's level
+                        if final_level == 0 {
+                            final_level = pending.level;
+                            final_title = pending.title.clone();
+                        }
+                    }
+
+                    sections.push(Section {
+                        level: final_level,
+                        title: final_title,
+                        path: final_path,
+                        content: final_content,
+                    });
+                } else if current_section.level > 0 {
+                    // Current section is header-only, add to pending list
+                    pending_header_sections.push(current_section);
+                }
+                // If level 0 (content before first header) and no real content, just discard
+
+                // Start new section with this header
                 current_section = Section {
                     level: header.level,
                     title: header.title.clone(),
                     path: self.build_path(&sections, &header),
-                    content: format!("{}\n\n", line), // Include header in content
+                    content: format!("{}\n\n", line),
                 };
             } else {
                 // Add content to current section
@@ -81,9 +121,46 @@ impl MarkdownSplitter {
             }
         }
 
-        // Don't forget the last section
-        if !current_section.content.trim().is_empty() {
-            sections.push(current_section);
+        // Handle the last section
+        let content_trimmed = current_section.content.trim();
+        let has_real_content = !content_trimmed.is_empty() &&
+            (current_section.level == 0 ||
+             content_trimmed.len() > current_section.title.len() + 3);
+
+        if has_real_content {
+            // Prepend any pending header-only sections
+            let mut final_content = current_section.content.clone();
+            let mut final_level = current_section.level;
+            let mut final_title = current_section.title.clone();
+            let mut final_path = current_section.path.clone();
+
+            for pending in pending_header_sections.drain(..).rev() {
+                final_content = format!("{}\n\n{}", pending.content.trim(), final_content.trim());
+                if final_level > pending.level {
+                    let mut new_path = pending.path.clone();
+                    new_path.push(pending.title.clone());
+                    final_path = new_path;
+                }
+                if final_level == 0 {
+                    final_level = pending.level;
+                    final_title = pending.title.clone();
+                }
+            }
+
+            sections.push(Section {
+                level: final_level,
+                title: final_title,
+                path: final_path,
+                content: final_content,
+            });
+        } else if current_section.level > 0 {
+            // Last section is header-only, merge with previous section if exists
+            pending_header_sections.push(current_section);
+            if let Some(last) = sections.last_mut() {
+                for pending in pending_header_sections.drain(..) {
+                    last.content = format!("{}\n\n{}", last.content.trim(), pending.content.trim());
+                }
+            }
         }
 
         sections
@@ -339,6 +416,39 @@ struct Header {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_merge_consecutive_empty_headers() {
+        // Test that consecutive headers without content are merged with the next section
+        let markdown = "# Main Title\n\n## Empty Section 1\n\n## Empty Section 2\n\n### Actual Content\n\nThis is the real content that should include all the parent headers.\n\n## Another Section\n\nMore content here.";
+
+        let splitter = MarkdownSplitter::new();
+        let chunks = splitter.split(markdown);
+
+        // Should not have chunks with just headers (content shorter than header itself)
+        for chunk in &chunks {
+            let content = chunk.content.trim();
+            // A chunk should have content beyond just the header line
+            // Header line is like "# Title", content should be longer than that
+            assert!(
+                content.len() > 20,
+                "Chunk content too short ({} chars), likely header-only: {}",
+                content.len(),
+                content
+            );
+        }
+
+        // The actual content section should include parent headers
+        let actual_content_chunk = chunks
+            .iter()
+            .find(|c| c.content.contains("real content"));
+        assert!(actual_content_chunk.is_some(), "Should have chunk with actual content");
+
+        let content = &actual_content_chunk.unwrap().content;
+        // Should include the parent headers
+        assert!(content.contains("Empty Section 1") || content.contains("Empty Section 2"),
+                "Content should include parent headers");
+    }
 
     #[test]
     fn test_split_simple_markdown() {

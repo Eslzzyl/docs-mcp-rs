@@ -1,7 +1,7 @@
 //! Web crawler for documentation sites.
 
 use crate::core::{Error, Result, ScraperOptions};
-use crate::scraper::{Fetcher, HtmlParser, HtmlToMarkdown};
+use crate::scraper::{Fetcher, HtmlToMarkdown, LinkExtractor};
 use regex::Regex;
 use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
@@ -149,9 +149,6 @@ impl Crawler {
         queue.push_back((start_url.to_string(), 0usize));
         visited.insert(start_url.to_string());
 
-        let parser = HtmlParser::new();
-        let converter = HtmlToMarkdown::new();
-
         while let Some((url, depth)) = queue.pop_front() {
             let current_count = pages_count.load(Ordering::Relaxed);
             debug!("Processing URL: {} (depth: {}, queue: {}, visited: {}, pages: {})",
@@ -182,7 +179,7 @@ impl Crawler {
 
             // Fetch and process the page
             debug!("Fetching and processing: {}", url);
-            match self.process_page(&url, depth, &parser, &converter).await {
+            match self.process_page(&url, depth).await {
                 Ok((result, links)) => {
                     debug!("Successfully processed {}: title='{:?}', content_length={}, links={}",
                            url, result.title, result.content.len(), links.len());
@@ -255,9 +252,6 @@ impl Crawler {
             queue.push_back((start_url.clone(), 0usize));
             visited.insert(start_url);
 
-            let parser = HtmlParser::new();
-            let converter = HtmlToMarkdown::new();
-
             // Send initial progress
             if let Some(ref callback) = progress_callback {
                 callback(CrawlProgress {
@@ -310,7 +304,7 @@ impl Crawler {
                 info!("[Crawl] Fetching: {}", url);
 
                 // Fetch and process the page
-                match Self::process_page_static(&fetcher, &url, depth, &parser, &converter).await {
+                match Self::process_page_static(&fetcher, &url, depth).await {
                     Ok((result, links)) => {
                         let new_count = pages_count.fetch_add(1, Ordering::Relaxed) + 1;
 
@@ -416,21 +410,19 @@ impl Crawler {
         fetcher: &Fetcher,
         url: &str,
         depth: usize,
-        parser: &HtmlParser,
-        converter: &HtmlToMarkdown,
     ) -> Result<(CrawlResult, Vec<crate::scraper::Link>)> {
         let fetch_result = fetcher.fetch(url).await?;
 
-        // Parse HTML (synchronous operations)
-        let doc = parser.parse(&fetch_result.content);
-        let title = parser.extract_title(&doc);
-        let markdown = converter.convert(&fetch_result.content)?;
-        let links = parser.extract_links(&doc, url)?;
+        // Stage 1: Extract main content and convert to Markdown using dom_smoothie + fast_html2md
+        let article = HtmlToMarkdown::convert(&fetch_result.content, url)?;
+
+        // Stage 2: Extract links from ORIGINAL HTML (not cleaned)
+        let links = LinkExtractor::extract(&fetch_result.content, url);
 
         let result = CrawlResult {
             url: url.to_string(),
-            title,
-            content: markdown,
+            title: Some(article.title),
+            content: article.content,
             content_type: fetch_result.content_type,
             etag: fetch_result.etag,
             last_modified: fetch_result.last_modified,
@@ -445,8 +437,6 @@ impl Crawler {
         &self,
         url: &str,
         depth: usize,
-        parser: &HtmlParser,
-        converter: &HtmlToMarkdown,
     ) -> Result<(CrawlResult, Vec<crate::scraper::Link>)> {
         debug!("Fetching: {}", url);
         let fetch_result = self.fetcher.fetch(url).await?;
@@ -454,25 +444,20 @@ impl Crawler {
         debug!("Fetched {}: status={}, content_length={}, content_type={:?}",
                url, fetch_result.status, fetch_result.content.len(), fetch_result.content_type);
 
-        // Parse HTML (synchronous operations)
-        trace!("Parsing HTML for: {}", url);
-        let doc = parser.parse(&fetch_result.content);
-
-        trace!("Extracting title for: {}", url);
-        let title = parser.extract_title(&doc);
-
+        // Stage 1: Extract main content and convert to Markdown
         trace!("Converting HTML to markdown for: {}", url);
-        let markdown = converter.convert(&fetch_result.content)?;
-        debug!("Converted {}: markdown_length={}", url, markdown.len());
+        let article = HtmlToMarkdown::convert(&fetch_result.content, url)?;
+        debug!("Converted {}: markdown_length={}", url, article.content.len());
 
+        // Stage 2: Extract links from ORIGINAL HTML
         trace!("Extracting links from: {}", url);
-        let links = parser.extract_links(&doc, url)?;
+        let links = LinkExtractor::extract(&fetch_result.content, url);
         trace!("Extracted {} links from {}", links.len(), url);
 
         let result = CrawlResult {
             url: url.to_string(),
-            title,
-            content: markdown,
+            title: Some(article.title),
+            content: article.content,
             content_type: fetch_result.content_type,
             etag: fetch_result.etag,
             last_modified: fetch_result.last_modified,
@@ -486,16 +471,13 @@ impl Crawler {
     pub async fn crawl_page(&self, url: &str) -> Result<CrawlResult> {
         let fetch_result = self.fetcher.fetch(url).await?;
 
-        let parser = HtmlParser::new();
-        let doc = parser.parse(&fetch_result.content);
-        let title = parser.extract_title(&doc);
-        let converter = HtmlToMarkdown::new();
-        let markdown = converter.convert(&fetch_result.content)?;
+        // Extract main content and convert to Markdown
+        let article = HtmlToMarkdown::convert(&fetch_result.content, url)?;
 
         Ok(CrawlResult {
             url: url.to_string(),
-            title,
-            content: markdown,
+            title: Some(article.title),
+            content: article.content,
             content_type: fetch_result.content_type,
             etag: fetch_result.etag,
             last_modified: fetch_result.last_modified,
