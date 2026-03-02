@@ -2,10 +2,9 @@
 
 use crate::core::{Error, Result};
 use crate::embed::Embedder;
-use crate::scraper::{CrawlConfig, Crawler};
-use crate::splitter::MarkdownSplitter;
+use crate::pipeline::{PipelineManager, ScraperOptions};
 use crate::store::{
-    Connection, DocumentStore, LibraryStore, PageStore, SearchOptions, VectorSearch, VersionStore,
+    Connection, LibraryStore, PageStore, SearchOptions, VectorSearch, VersionStore,
 };
 use rmcp::model::{CallToolResult, Content};
 use serde::{Deserialize, Serialize};
@@ -73,89 +72,66 @@ pub struct RemoveLibraryParams {
 /// Scrape a documentation website.
 pub async fn scrape_docs(
     connection: &Connection,
-    embedder: &dyn Embedder,
+    _embedder: &dyn Embedder,
+    pipeline: &PipelineManager,
     params: ScrapeDocsParams,
 ) -> Result<CallToolResult> {
-    // Create library
-    let lib_store = LibraryStore::new(connection);
-    let library = lib_store.create(&crate::core::NewLibrary {
-        name: params.library.clone(),
-    })?;
-
-    // Create version
-    let ver_store = VersionStore::new(connection);
-    let version = ver_store.create(&crate::core::NewVersion {
-        library_id: library.id,
-        name: params.version.unwrap_or_default(),
-        source_url: Some(params.url.clone()),
-        scraper_options: None,
-    })?;
-
-    // Crawl the website
-    let crawl_config = CrawlConfig {
-        max_pages: params.max_pages,
-        max_depth: params.max_depth,
+    // Enqueue the job through PipelineManager to enable progress tracking
+    let options = ScraperOptions {
+        max_pages: Some(params.max_pages),
+        max_depth: Some(params.max_depth),
         ..Default::default()
     };
 
-    let crawler = Crawler::new(crawl_config).map_err(|e| Error::Scraping(e.to_string()))?;
-    let pages = crawler
-        .crawl(&params.url)
-        .await
-        .map_err(|e| Error::Scraping(e.to_string()))?;
+    let job_id = pipeline
+        .enqueue(
+            params.library.clone(),
+            params.version.unwrap_or_default(),
+            params.url.clone(),
+            options,
+        )
+        .await?;
 
+    // Wait for job completion
+    pipeline.wait_for_job(&job_id).await?;
+
+    // Get job result
+    let job = pipeline
+        .get_job(&job_id)
+        .await
+        .ok_or_else(|| Error::Mcp("Job not found after completion".to_string()))?;
+
+    // Get the final page count from the database
+    let lib_store = LibraryStore::new(connection);
+    let ver_store = VersionStore::new(connection);
+    let page_store = PageStore::new(connection);
+
+    let library = lib_store
+        .find_by_name(&params.library)?
+        .ok_or_else(|| Error::NotFound(format!("Library '{}' not found", params.library)))?;
+
+    let version = ver_store
+        .find_by_library_and_name(library.id, &job.version)?
+        .ok_or_else(|| Error::NotFound(format!("Version '{}' not found", job.version)))?;
+
+    let pages = page_store.find_by_version(version.id)?;
     let pages_count = pages.len();
 
-    // Process each page
-    let page_store = PageStore::new(connection);
-    let doc_store = DocumentStore::new(connection);
-    let splitter = MarkdownSplitter::new();
-
-    let mut total_chunks = 0;
-
-    for page_content in pages {
-        // Create page record
-        let page = page_store.upsert(&crate::core::NewPage {
-            version_id: version.id,
-            url: page_content.url.clone(),
-            title: page_content.title.clone(),
-            etag: None,
-            last_modified: None,
-            content_type: Some("text/markdown".to_string()),
-            depth: page_content.depth as i32,
-        })?;
-
-        // Split into chunks
-        let chunks = splitter.split(&page_content.content);
-
-        if chunks.is_empty() {
-            continue;
-        }
-
-        // Generate embeddings in batch
-        let texts: Vec<&str> = chunks.iter().map(|c| c.content.as_str()).collect();
-        let embeddings = embedder.embed_batch(&texts).await?;
-
-        // Create documents with embeddings
-        let docs: Vec<crate::core::NewDocument> = chunks
-            .into_iter()
-            .zip(embeddings.into_iter())
-            .enumerate()
-            .map(|(i, (chunk, embedding))| crate::core::NewDocument {
-                page_id: page.id,
-                content: chunk.content,
-                metadata: chunk.metadata,
-                sort_order: i as i32,
-                embedding: Some(embedding),
-            })
-            .collect();
-
-        doc_store.create_batch(&docs)?;
-        total_chunks += docs.len();
-    }
-
-    // Update version status
-    ver_store.update_status(version.id, crate::core::VersionStatus::Completed)?;
+    // Count total chunks
+    let total_chunks: usize = pages
+        .iter()
+        .map(|p| {
+            connection
+                .with_connection(|conn| {
+                    conn.query_row(
+                        "SELECT COUNT(*) FROM documents WHERE page_id = ?1",
+                        rusqlite::params![p.id],
+                        |row| row.get::<_, i64>(0),
+                    )
+                })
+                .unwrap_or(0) as usize
+        })
+        .sum();
 
     Ok(CallToolResult::success(vec![Content::text(format!(
         "Successfully scraped {} pages with {} chunks for library '{}' (version: {})",

@@ -5,6 +5,7 @@ use crate::embed::{Embedder, create_embedder};
 use crate::mcp::tools::{
     self, ListLibrariesParams, RemoveLibraryParams, ScrapeDocsParams, SearchDocsParams,
 };
+use crate::pipeline::PipelineManager;
 use crate::store::Connection;
 use rmcp::{
     ServerHandler,
@@ -23,13 +24,18 @@ pub struct DocsMcpServer {
     config: Arc<Config>,
     connection: Arc<Connection>,
     embedder: Arc<RwLock<Box<dyn Embedder>>>,
+    pipeline: Arc<PipelineManager>,
     #[allow(dead_code)]
     tool_router: ToolRouter<Self>,
 }
 
 impl DocsMcpServer {
     /// Create a new docs MCP server.
-    pub fn new(config: Config, connection: Connection) -> Result<Self> {
+    pub fn new(
+        config: Config,
+        connection: Connection,
+        pipeline: Arc<PipelineManager>,
+    ) -> Result<Self> {
         let config = Arc::new(config);
         let connection = Arc::new(connection);
         let embedder = create_embedder(&config.embedding)?;
@@ -38,6 +44,7 @@ impl DocsMcpServer {
             config,
             connection,
             embedder: Arc::new(RwLock::new(embedder)),
+            pipeline,
             tool_router: Self::tool_router(),
         })
     }
@@ -47,11 +54,13 @@ impl DocsMcpServer {
         config: Arc<Config>,
         connection: Arc<Connection>,
         embedder: Arc<RwLock<Box<dyn Embedder>>>,
+        pipeline: Arc<PipelineManager>,
     ) -> Self {
         Self {
             config,
             connection,
             embedder,
+            pipeline,
             tool_router: Self::tool_router(),
         }
     }
@@ -80,6 +89,7 @@ impl DocsMcpServer {
         config: Arc<Config>,
         connection: Arc<Connection>,
         embedder: Arc<RwLock<Box<dyn Embedder>>>,
+        pipeline: Arc<PipelineManager>,
     ) -> StreamableHttpService<Self, LocalSessionManager> {
         let http_config = StreamableHttpServerConfig {
             sse_keep_alive: Some(std::time::Duration::from_secs(15)),
@@ -95,6 +105,7 @@ impl DocsMcpServer {
                     config.clone(),
                     connection.clone(),
                     embedder.clone(),
+                    pipeline.clone(),
                 ))
             },
             Arc::new(LocalSessionManager::default()),
@@ -118,7 +129,7 @@ impl DocsMcpServer {
     #[tool(description = "Scrape and index a documentation website")]
     async fn scrape_docs(&self, Parameters(params): Parameters<ScrapeDocsParams>) -> String {
         let embedder = self.embedder.read().await;
-        let result = tools::scrape_docs(&self.connection, &**embedder, params).await;
+        let result = tools::scrape_docs(&self.connection, &**embedder, &self.pipeline, params).await;
         match result {
             Ok(r) => r
                 .content

@@ -162,8 +162,8 @@ async fn run_serve(
     if stdio {
         println!("🚀 MCP server starting in stdio mode...");
 
-        // Create MCP server
-        let server = DocsMcpServer::new(config.clone(), (*connection).clone())?;
+        // Create MCP server with pipeline
+        let server = DocsMcpServer::new(config.clone(), (*connection).clone(), pipeline.clone())?;
 
         // Run stdio server
         server.run().await
@@ -183,7 +183,7 @@ async fn run_serve(
         // Create router with MCP endpoint
         let config_arc = Arc::new(config.clone());
         let mcp_service =
-            DocsMcpServer::create_http_service(config_arc, connection.clone(), embedder.clone());
+            DocsMcpServer::create_http_service(config_arc, connection.clone(), embedder.clone(), pipeline.clone());
         let app = create_router_with_mcp(state, mcp_service);
 
         // Create TCP listener
