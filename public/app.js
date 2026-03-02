@@ -354,6 +354,7 @@ async function handleScrapeSubmit(e) {
     version: formData.get("version") || "",
     max_pages: parseInt(formData.get("max_pages")) || 1000,
     max_depth: parseInt(formData.get("max_depth")) || 3,
+    scrape_mode: formData.get("scrape_mode") || "browser",
   };
 
   const result = await fetchAPI("/jobs", {

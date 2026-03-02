@@ -79,6 +79,8 @@ pub struct ScrapeRequest {
     pub max_pages: usize,
     #[serde(default = "default_max_depth")]
     pub max_depth: usize,
+    #[serde(default = "default_scrape_mode")]
+    pub scrape_mode: String,
 }
 
 fn default_max_pages() -> usize {
@@ -87,6 +89,10 @@ fn default_max_pages() -> usize {
 
 fn default_max_depth() -> usize {
     3
+}
+
+fn default_scrape_mode() -> String {
+    "browser".to_string()
 }
 
 /// Search result item.
@@ -450,6 +456,7 @@ async fn create_job(
     let options = ScraperOptions {
         max_pages: Some(req.max_pages),
         max_depth: Some(req.max_depth),
+        scrape_mode: Some(req.scrape_mode),
         ..Default::default()
     };
 
