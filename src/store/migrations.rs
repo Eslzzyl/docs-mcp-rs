@@ -22,6 +22,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "fix_fts_delete_trigger",
         sql: include_str!("../../migrations/002_fix_fts_delete_trigger.sql"),
     },
+    Migration {
+        version: 3,
+        name: "create_vector_table",
+        sql: include_str!("../../migrations/003_create_vector_table.sql"),
+    },
 ];
 
 /// Run all pending migrations.

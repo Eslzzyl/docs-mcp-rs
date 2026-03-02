@@ -3,9 +3,25 @@
 use crate::core::{Config, Error, Result};
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::ffi::sqlite3_auto_extension;
 use rusqlite::Connection as RusqliteConnection;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::Once;
+
+/// Static initializer for sqlite-vec extension.
+static VEC_INIT: Once = Once::new();
+
+/// Register sqlite-vec extension to be auto-loaded for all new connections.
+fn ensure_vec_extension() {
+    VEC_INIT.call_once(|| {
+        unsafe {
+            sqlite3_auto_extension(Some(std::mem::transmute(
+                sqlite_vec::sqlite3_vec_init as *const (),
+            )));
+        }
+    });
+}
 
 /// Connection pool size - SQLite benefits from multiple readers in WAL mode.
 const DEFAULT_POOL_SIZE: u32 = 5;
@@ -19,6 +35,9 @@ pub struct Connection {
 impl Connection {
     /// Open a new database connection pool at the specified path.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
+        // Ensure sqlite-vec extension is registered
+        ensure_vec_extension();
+
         let path = path.as_ref();
 
         // Ensure parent directory exists
@@ -54,6 +73,9 @@ impl Connection {
 
     /// Open an in-memory database pool (for testing).
     pub fn in_memory() -> Result<Self> {
+        // Ensure sqlite-vec extension is registered
+        ensure_vec_extension();
+
         let manager = SqliteConnectionManager::memory().with_init(|conn| {
             conn.execute_batch("PRAGMA foreign_keys = ON;")?;
             Ok(())
