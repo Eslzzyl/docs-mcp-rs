@@ -221,7 +221,10 @@ function renderLibraryCard(lib) {
         <div class="card">
             <div class="card-header">
                 <span class="card-title">${lib.name}</span>
-                <span class="card-meta">${lib.versions.length} version(s)</span>
+                <div class="card-actions">
+                    <span class="card-meta">${lib.versions.length} version(s)</span>
+                    <button class="btn btn-danger btn-sm" onclick="deleteLibrary('${lib.name}')">Delete Library</button>
+                </div>
             </div>
             <div class="card-body">
                 <div class="versions-list">${versionsHtml}</div>
@@ -466,6 +469,35 @@ async function deleteVersion(library, version) {
   }
 }
 
+// Delete Library
+async function deleteLibrary(library) {
+  console.log(`[deleteLibrary] Starting deletion for ${library}`);
+
+  if (!confirm(`Delete library "${library}" and ALL its versions? This cannot be undone.`)) {
+    console.log(`[deleteLibrary] Cancelled by user`);
+    return;
+  }
+
+  const encodedLibrary = encodeURIComponent(library);
+  const endpoint = `/libraries/${encodedLibrary}`;
+
+  console.log(`[deleteLibrary] Library: "${library}" -> encoded: "${encodedLibrary}"`);
+  console.log(`[deleteLibrary] Full endpoint: ${endpoint}`);
+
+  const result = await fetchAPI(endpoint, {
+    method: "DELETE",
+  });
+
+  console.log(`[deleteLibrary] Result:`, result);
+
+  if (result.success) {
+    showToast("Library deleted", "success");
+    loadLibraries();
+  } else {
+    showToast(`Error: ${result.error}`, "error");
+  }
+}
+
 // Cancel Job
 async function cancelJob(jobId) {
   const result = await fetchAPI(`/jobs/${jobId}/cancel`, {
@@ -633,4 +665,5 @@ function escapeHtml(text) {
 
 // Make functions available globally for inline handlers
 window.deleteVersion = deleteVersion;
+window.deleteLibrary = deleteLibrary;
 window.cancelJob = cancelJob;

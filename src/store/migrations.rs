@@ -11,11 +11,18 @@ struct Migration {
 }
 
 /// All migrations in order.
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "initial_schema",
-    sql: include_str!("../../migrations/001_initial_schema.sql"),
-}];
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "initial_schema",
+        sql: include_str!("../../migrations/001_initial_schema.sql"),
+    },
+    Migration {
+        version: 2,
+        name: "fix_fts_delete_trigger",
+        sql: include_str!("../../migrations/002_fix_fts_delete_trigger.sql"),
+    },
+];
 
 /// Run all pending migrations.
 pub fn run_migrations(conn: &Connection) -> Result<()> {

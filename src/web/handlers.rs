@@ -147,6 +147,7 @@ pub fn create_router(state: AppState) -> Router {
         // API routes
         .route("/api/libraries", get(list_libraries))
         .route("/api/libraries/{name}", get(get_library))
+        .route("/api/libraries/{name}", delete(delete_library))
         .route(
             "/api/libraries/{name}/versions/{version}",
             delete(delete_version),
@@ -171,6 +172,7 @@ pub fn create_router_with_mcp(state: AppState, mcp_service: crate::mcp::McpHttpS
         // API routes
         .route("/api/libraries", get(list_libraries))
         .route("/api/libraries/{name}", get(get_library))
+        .route("/api/libraries/{name}", delete(delete_library))
         .route(
             "/api/libraries/{name}/versions/{version}",
             delete(delete_version),
@@ -354,6 +356,58 @@ async fn delete_version(
                 ))),
                 Err(e) => Json(ApiResponse::error(e.to_string())),
             }
+        }
+        Ok(None) => Json(ApiResponse::error(format!("Library '{}' not found", name))),
+        Err(e) => Json(ApiResponse::error(e.to_string())),
+    }
+}
+
+/// DELETE /api/libraries/:name - Delete a library and all its data.
+async fn delete_library(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> Json<ApiResponse<()>> {
+    let lib_store = LibraryStore::new(&state.connection);
+
+    match lib_store.find_by_name(&name) {
+        Ok(Some(lib)) => {
+            // Delete all related data (documents, pages, versions, library)
+            if let Err(e) = state.connection.with_transaction(|tx| {
+                // Delete documents for all pages in all versions of this library
+                tx.execute(
+                    "DELETE FROM documents WHERE page_id IN (
+                        SELECT p.id FROM pages p
+                        JOIN versions v ON p.version_id = v.id
+                        WHERE v.library_id = ?1
+                    )",
+                    rusqlite::params![lib.id],
+                )?;
+                // Delete all pages in all versions of this library
+                tx.execute(
+                    "DELETE FROM pages WHERE version_id IN (
+                        SELECT id FROM versions WHERE library_id = ?1
+                    )",
+                    rusqlite::params![lib.id],
+                )?;
+                // Delete all versions of this library
+                tx.execute(
+                    "DELETE FROM versions WHERE library_id = ?1",
+                    rusqlite::params![lib.id],
+                )?;
+                // Delete the library itself
+                tx.execute(
+                    "DELETE FROM libraries WHERE id = ?1",
+                    rusqlite::params![lib.id],
+                )?;
+                Ok(())
+            }) {
+                return Json(ApiResponse::error(e.to_string()));
+            }
+
+            // Emit library change event
+            state.event_bus.emit(crate::events::Event::library_change());
+
+            Json(ApiResponse::success(()))
         }
         Ok(None) => Json(ApiResponse::error(format!("Library '{}' not found", name))),
         Err(e) => Json(ApiResponse::error(e.to_string())),

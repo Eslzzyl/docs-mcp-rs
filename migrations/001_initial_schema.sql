@@ -115,5 +115,6 @@ END;
 CREATE TRIGGER IF NOT EXISTS documents_fts_after_delete
 AFTER DELETE ON documents
 BEGIN
-    DELETE FROM documents_fts WHERE rowid = OLD.id;
+    INSERT INTO documents_fts(documents_fts, rowid, content, title, url, path)
+    VALUES('delete', OLD.id, '', '', '', '');
 END;

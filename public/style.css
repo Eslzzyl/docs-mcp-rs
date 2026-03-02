@@ -256,6 +256,12 @@ header h1 {
     font-size: 0.875rem;
 }
 
+.card-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
 .card-body {
     margin-top: 0.5rem;
 }
