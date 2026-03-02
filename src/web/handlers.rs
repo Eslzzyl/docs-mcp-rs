@@ -33,17 +33,9 @@ async fn serve_static_file(path: Path<String>) -> impl IntoResponse {
     match StaticAssets::get(path) {
         Some(content) => {
             let mime_type = mime_guess::from_path(path).first_or_octet_stream();
-            (
-                [(header::CONTENT_TYPE, mime_type.as_ref())],
-                content.data,
-            )
-                .into_response()
+            ([(header::CONTENT_TYPE, mime_type.as_ref())], content.data).into_response()
         }
-        None => (
-            axum::http::StatusCode::NOT_FOUND,
-            "Not Found",
-        )
-            .into_response(),
+        None => (axum::http::StatusCode::NOT_FOUND, "Not Found").into_response(),
     }
 }
 

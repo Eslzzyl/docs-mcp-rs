@@ -117,7 +117,8 @@ impl RateLimiter {
             let mut wait_secs = delay_needed;
 
             if self.request_tokens < need_request_tokens {
-                let request_wait = (need_request_tokens - self.request_tokens) / self.request_refill_rate;
+                let request_wait =
+                    (need_request_tokens - self.request_tokens) / self.request_refill_rate;
                 wait_secs = wait_secs.max(request_wait);
             }
 
@@ -149,8 +150,8 @@ impl RateLimiter {
             .min(self.max_request_tokens);
 
         // Refill token tokens
-        self.token_tokens = (self.token_tokens + elapsed_secs * self.token_refill_rate)
-            .min(self.max_token_tokens);
+        self.token_tokens =
+            (self.token_tokens + elapsed_secs * self.token_refill_rate).min(self.max_token_tokens);
     }
 
     /// Get current limits for monitoring.

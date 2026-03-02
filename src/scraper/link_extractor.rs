@@ -62,10 +62,7 @@ impl LinkExtractor {
 
                 trace!(
                     "Found link: {} -> {} (internal: {}, text: '{}')",
-                    href,
-                    resolved,
-                    is_internal,
-                    text
+                    href, resolved, is_internal, text
                 );
 
                 links.push(Link {

@@ -77,7 +77,11 @@ impl HtmlParser {
             if let Some(sel) = selector {
                 if let Some(el) = document.select(sel).next() {
                     let content = el.text().collect::<String>();
-                    debug!("Extracted main content using selector '{}': {} chars", name, content.len());
+                    debug!(
+                        "Extracted main content using selector '{}': {} chars",
+                        name,
+                        content.len()
+                    );
                     return content;
                 }
             }
@@ -162,7 +166,10 @@ impl HtmlParser {
                 // Get link text
                 let text = element.text().collect::<String>().trim().to_string();
 
-                trace!("Found link: {} -> {} (internal: {})", href, resolved_url, is_internal);
+                trace!(
+                    "Found link: {} -> {} (internal: {})",
+                    href, resolved_url, is_internal
+                );
 
                 links.push(Link {
                     url: resolved_url,
@@ -172,8 +179,14 @@ impl HtmlParser {
             }
         }
 
-        debug!("Link extraction complete: {} unique links found (skipped: {} empty, {} javascript, {} anchors, {} duplicates)",
-               links.len(), skipped_empty, skipped_javascript, skipped_anchor, skipped_duplicate);
+        debug!(
+            "Link extraction complete: {} unique links found (skipped: {} empty, {} javascript, {} anchors, {} duplicates)",
+            links.len(),
+            skipped_empty,
+            skipped_javascript,
+            skipped_anchor,
+            skipped_duplicate
+        );
 
         Ok(links)
     }

@@ -127,7 +127,10 @@ pub async fn scrape_docs(
 
         connection
             .with_connection(|conn| {
-                let sql = format!("SELECT COUNT(*) FROM documents WHERE page_id IN ({})", in_clause);
+                let sql = format!(
+                    "SELECT COUNT(*) FROM documents WHERE page_id IN ({})",
+                    in_clause
+                );
                 conn.query_row(&sql, rusqlite::params_from_iter(page_ids.iter()), |row| {
                     row.get::<_, i64>(0)
                 })

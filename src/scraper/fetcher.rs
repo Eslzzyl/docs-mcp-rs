@@ -54,7 +54,10 @@ impl Fetcher {
         etag: Option<&str>,
         last_modified: Option<&str>,
     ) -> Result<FetchResult> {
-        debug!("Fetching URL: {} (etag: {:?}, last_modified: {:?})", url, etag, last_modified);
+        debug!(
+            "Fetching URL: {} (etag: {:?}, last_modified: {:?})",
+            url, etag, last_modified
+        );
 
         // Validate URL
         let parsed_url = Url::parse(url)
@@ -62,7 +65,11 @@ impl Fetcher {
 
         // Only allow http and https
         if parsed_url.scheme() != "http" && parsed_url.scheme() != "https" {
-            warn!("Unsupported URL scheme for {}: {}", url, parsed_url.scheme());
+            warn!(
+                "Unsupported URL scheme for {}: {}",
+                url,
+                parsed_url.scheme()
+            );
             return Err(Error::InvalidUrl(format!(
                 "Unsupported URL scheme: {}",
                 parsed_url.scheme()
@@ -91,7 +98,10 @@ impl Fetcher {
         let status = response.status().as_u16();
         let final_url = response.url().to_string();
 
-        debug!("Received response for {}: status={}, final_url={}", url, status, final_url);
+        debug!(
+            "Received response for {}: status={}, final_url={}",
+            url, status, final_url
+        );
 
         // Handle 304 Not Modified
         if status == 304 {
@@ -110,8 +120,10 @@ impl Fetcher {
         let last_modified = extract_header(&response, LAST_MODIFIED);
         let content_type = extract_header(&response, CONTENT_TYPE);
 
-        trace!("Response headers for {}: etag={:?}, last_modified={:?}, content_type={:?}",
-               url, etag, last_modified, content_type);
+        trace!(
+            "Response headers for {}: etag={:?}, last_modified={:?}, content_type={:?}",
+            url, etag, last_modified, content_type
+        );
 
         // Read body
         trace!("Reading response body for: {}", url);
@@ -120,7 +132,11 @@ impl Fetcher {
             .await
             .map_err(|e| Error::Http(format!("Failed to read response body: {}", e)))?;
 
-        debug!("Successfully fetched {}: content_length={}", url, content.len());
+        debug!(
+            "Successfully fetched {}: content_length={}",
+            url,
+            content.len()
+        );
 
         Ok(FetchResult {
             url: url.to_string(),

@@ -6,8 +6,8 @@
 
 use crate::core::{Error, Result};
 use crate::embed::{
-    rate_limiter::{estimate_batch_tokens, SharedRateLimiter},
     Embedder,
+    rate_limiter::{SharedRateLimiter, estimate_batch_tokens},
 };
 use async_trait::async_trait;
 use tokio::sync::{mpsc, oneshot};
@@ -65,8 +65,7 @@ impl EmbeddingQueue {
                     let estimated_tokens = estimate_batch_tokens(&texts_refs);
                     trace!(
                         "Request #{}: acquiring rate limit for {} tokens",
-                        request_count,
-                        estimated_tokens
+                        request_count, estimated_tokens
                     );
                     limiter.lock().await.acquire(estimated_tokens).await;
                 }
@@ -91,7 +90,10 @@ impl EmbeddingQueue {
                 }
             }
 
-            info!("EmbeddingQueue worker stopped (processed {} requests)", request_count);
+            info!(
+                "EmbeddingQueue worker stopped (processed {} requests)",
+                request_count
+            );
         });
 
         Self { sender }

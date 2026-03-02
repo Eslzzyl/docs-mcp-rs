@@ -480,7 +480,7 @@ async fn execute_job_internal(
     // Crawl the site using streaming
     let max_pages = options.max_pages.unwrap_or(1000);
     let max_depth = options.max_depth.unwrap_or(3);
-    
+
     // Start crawling
     let mut rx = crawler.crawl_stream(source_url, None).await?;
 
@@ -488,11 +488,11 @@ async fn execute_job_internal(
 
     // Get embedder for processing
     let embedder_guard = embedder.read().await;
-    
+
     // Progress tracking
     let mut pages_scraped = 0;
     let mut last_progress_update = std::time::Instant::now();
-    
+
     // Send initial progress
     {
         let progress = JobProgress {
@@ -524,7 +524,7 @@ async fn execute_job_internal(
         }
 
         pages_scraped += 1;
-        
+
         // Estimate discovered pages (pages scraped + likely more in queue)
         // We don't have direct access to queue length, so we estimate based on progress
         // Initially we estimate higher to show discovering phase
@@ -539,8 +539,9 @@ async fn execute_job_internal(
 
         // Send progress update (throttled to every 50ms, but always send for first 5 pages)
         let now = std::time::Instant::now();
-        let should_update = pages_scraped <= 5 || now.duration_since(last_progress_update).as_millis() >= 50;
-        
+        let should_update =
+            pages_scraped <= 5 || now.duration_since(last_progress_update).as_millis() >= 50;
+
         if should_update {
             // Determine phase: show "Discovering" until we've processed 3 pages AND have a reasonable estimate
             let phase = if pages_scraped < 3 {
@@ -548,9 +549,9 @@ async fn execute_job_internal(
             } else {
                 CrawlPhase::Scraping
             };
-            
+
             let effective_total = std::cmp::min(total_discovered, max_pages);
-            
+
             let progress = JobProgress {
                 phase: phase.clone(),
                 pages_scraped,
@@ -564,10 +565,12 @@ async fn execute_job_internal(
                 max_depth,
                 is_discovering: phase == CrawlPhase::Discovering,
             };
-            
-            info!("[{}] Progress update: phase={:?}, scraped={}/{}, queue={}", 
-                  job_id, phase, pages_scraped, effective_total, estimated_queue);
-            
+
+            info!(
+                "[{}] Progress update: phase={:?}, scraped={}/{}, queue={}",
+                job_id, phase, pages_scraped, effective_total, estimated_queue
+            );
+
             // Update job progress and emit event
             let mut jobs_guard = jobs.lock().await;
             if let Some(internal_job) = jobs_guard.get_mut(job_id) {
@@ -576,7 +579,7 @@ async fn execute_job_internal(
                 event_bus.emit(Event::job_progress(job, progress));
             }
             drop(jobs_guard);
-            
+
             last_progress_update = now;
         }
 
@@ -601,7 +604,10 @@ async fn execute_job_internal(
                 let embeddings = match embedder_guard.embed_batch(&texts).await {
                     Ok(embs) => embs,
                     Err(e) => {
-                        warn!("[{}] Failed to generate embeddings for {}: {}", job_id, crawl_result.url, e);
+                        warn!(
+                            "[{}] Failed to generate embeddings for {}: {}",
+                            job_id, crawl_result.url, e
+                        );
                         continue;
                     }
                 };
@@ -622,7 +628,10 @@ async fn execute_job_internal(
 
                 // Store documents
                 if let Err(e) = doc_store.create_batch(&documents) {
-                    warn!("[{}] Failed to store documents for {}: {}", job_id, crawl_result.url, e);
+                    warn!(
+                        "[{}] Failed to store documents for {}: {}",
+                        job_id, crawl_result.url, e
+                    );
                     continue;
                 }
 

@@ -2,8 +2,8 @@
 
 use crate::core::{Error, Result};
 use crate::embed::{
-    rate_limiter::{estimate_batch_tokens, SharedRateLimiter},
     Embedder, EmbeddingModel, GOOGLE_MODELS,
+    rate_limiter::{SharedRateLimiter, estimate_batch_tokens},
 };
 use async_trait::async_trait;
 use reqwest::Client as HttpClient;
@@ -266,10 +266,9 @@ impl Embedder for GoogleEmbedder {
                 let status = response.status();
 
                 if status.is_success() {
-                    let result: BatchEmbedResponse = response
-                        .json()
-                        .await
-                        .map_err(|e| Error::Embedding(format!("Failed to parse response: {}", e)))?;
+                    let result: BatchEmbedResponse = response.json().await.map_err(|e| {
+                        Error::Embedding(format!("Failed to parse response: {}", e))
+                    })?;
 
                     for mut emb in result.embeddings.into_iter().map(|e| e.values) {
                         emb.resize(self.dimension, 0.0);
@@ -313,9 +312,9 @@ mod tests {
             "test-key".to_string(),
             "text-embedding-004".to_string(),
             768,
-            None,    // no rate limiter
-            3,       // max retries
-            1000,    // retry base delay
+            None, // no rate limiter
+            3,    // max retries
+            1000, // retry base delay
         )
         .unwrap();
 

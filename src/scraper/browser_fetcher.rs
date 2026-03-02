@@ -96,10 +96,7 @@ impl BrowserFetcher {
 
         launch_options_builder
             .headless(self.config.headless)
-            .window_size(Some((
-                self.config.window_width,
-                self.config.window_height,
-            )));
+            .window_size(Some((self.config.window_width, self.config.window_height)));
 
         // Set Chrome executable path if provided
         if let Some(ref path) = self.config.chrome_path {
@@ -167,9 +164,9 @@ impl BrowserFetcher {
         let browser = self.init_browser()?;
 
         // Create a new tab
-        let tab = browser.new_tab().map_err(|e| {
-            Error::Scraper(format!("Failed to create new browser tab: {}", e))
-        })?;
+        let tab = browser
+            .new_tab()
+            .map_err(|e| Error::Scraper(format!("Failed to create new browser tab: {}", e)))?;
 
         // Set up request interception if needed
         if self.config.block_images || self.config.block_css {
@@ -178,8 +175,8 @@ impl BrowserFetcher {
 
         // Set custom headers if provided
         if !self.config.headers.is_empty() {
-            let headers_json = serde_json::to_string(&self.config.headers)
-                .map_err(|e| Error::Serialization(e))?;
+            let headers_json =
+                serde_json::to_string(&self.config.headers).map_err(|e| Error::Serialization(e))?;
             tab.evaluate(&format!(
                 "() => {{ Object.entries({}).forEach(([k, v]) => {{\n                    if (!window._customHeaders) window._customHeaders = {{}};\n                    window._customHeaders[k] = v;\n                }}); }}",
                 headers_json
@@ -188,25 +185,27 @@ impl BrowserFetcher {
 
         // Set user agent if provided
         if let Some(ref user_agent) = self.config.user_agent {
-            tab.set_user_agent(user_agent, None, None).map_err(|e| {
-                Error::Scraper(format!("Failed to set user agent: {}", e))
-            })?;
+            tab.set_user_agent(user_agent, None, None)
+                .map_err(|e| Error::Scraper(format!("Failed to set user agent: {}", e)))?;
         }
 
         // Navigate to URL with timeout
         let timeout = Duration::from_secs(self.config.timeout_secs);
 
         let navigate_result = tokio::time::timeout(timeout, async {
-            tab.navigate_to(url).map_err(|e| {
-                Error::Http(format!("Failed to navigate to {}: {}", url, e))
-            })?;
+            tab.navigate_to(url)
+                .map_err(|e| Error::Http(format!("Failed to navigate to {}: {}", url, e)))?;
 
-            tab.wait_until_navigated().map_err(|e| {
-                Error::Http(format!("Navigation timeout for {}: {}", url, e))
-            })
+            tab.wait_until_navigated()
+                .map_err(|e| Error::Http(format!("Navigation timeout for {}: {}", url, e)))
         })
         .await
-        .map_err(|_| Error::Http(format!("Navigation timeout for {} after {:?}", url, timeout)))?;
+        .map_err(|_| {
+            Error::Http(format!(
+                "Navigation timeout for {} after {:?}",
+                url, timeout
+            ))
+        })?;
 
         if let Err(e) = navigate_result {
             return Err(e);
@@ -223,7 +222,8 @@ impl BrowserFetcher {
         // Wait for specific selector if provided
         if let Some(ref selector) = options.as_ref().and_then(|o| o.wait_for_selector.as_ref()) {
             trace!("Waiting for selector: {}", selector);
-            for _ in 0..50 { // Wait up to 5 seconds
+            for _ in 0..50 {
+                // Wait up to 5 seconds
                 let check_script = format!("() => document.querySelector('{}') !== null", selector);
                 let result = tab.evaluate(&check_script, false).ok();
                 if let Some(ref r) = result {
@@ -249,10 +249,7 @@ impl BrowserFetcher {
 
         // Wait for JavaScript execution
         if wait_after_load_ms > 0 {
-            trace!(
-                "Waiting {}ms for JavaScript execution",
-                wait_after_load_ms
-            );
+            trace!("Waiting {}ms for JavaScript execution", wait_after_load_ms);
             tokio::time::sleep(Duration::from_millis(wait_after_load_ms)).await;
         }
 
@@ -260,9 +257,9 @@ impl BrowserFetcher {
         self.wait_for_loading_indicators(&tab).ok();
 
         // Extract content - get the main document content
-        let mut content = tab.get_content().map_err(|e| {
-            Error::Scraper(format!("Failed to get page content: {}", e))
-        })?;
+        let mut content = tab
+            .get_content()
+            .map_err(|e| Error::Scraper(format!("Failed to get page content: {}", e)))?;
 
         trace!("Initial content length: {} bytes", content.len());
 
@@ -321,11 +318,14 @@ impl BrowserFetcher {
     /// Set up request interception to block resources.
     fn setup_request_interception(&self, tab: &Tab) -> Result<()> {
         // Enable fetch domain for request interception
-        tab.enable_fetch(Some(&[RequestPattern {
-            url_pattern: Some("*".to_string()),
-            resource_Type: None,
-            request_stage: Some(headless_chrome::protocol::cdp::Fetch::RequestStage::Request),
-        }]), None)
+        tab.enable_fetch(
+            Some(&[RequestPattern {
+                url_pattern: Some("*".to_string()),
+                resource_Type: None,
+                request_stage: Some(headless_chrome::protocol::cdp::Fetch::RequestStage::Request),
+            }]),
+            None,
+        )
         .map_err(|e| Error::Scraper(format!("Failed to enable fetch interception: {}", e)))?;
 
         // Note: Full request interception with resource blocking requires more complex handling
@@ -409,9 +409,9 @@ impl BrowserFetcher {
         }
         "#;
 
-        let result = tab.evaluate(script, false).map_err(|e| {
-            Error::Scraper(format!("Failed to extract Shadow DOM: {}", e))
-        })?;
+        let result = tab
+            .evaluate(script, false)
+            .map_err(|e| Error::Scraper(format!("Failed to extract Shadow DOM: {}", e)))?;
 
         if let Some(ref value) = result.value {
             if let Some(s) = value.as_str() {
@@ -452,9 +452,9 @@ impl BrowserFetcher {
         }
         "#;
 
-        let result = tab.evaluate(script, false).map_err(|e| {
-            Error::Scraper(format!("Failed to process iframes: {}", e))
-        })?;
+        let result = tab
+            .evaluate(script, false)
+            .map_err(|e| Error::Scraper(format!("Failed to process iframes: {}", e)))?;
 
         if let Some(ref value) = result.value {
             if let Some(json_str) = value.as_str() {
@@ -466,9 +466,9 @@ impl BrowserFetcher {
                 }
 
                 // Get the main content
-                let main_content = tab.get_content().map_err(|e| {
-                    Error::Scraper(format!("Failed to get main content: {}", e))
-                })?;
+                let main_content = tab
+                    .get_content()
+                    .map_err(|e| Error::Scraper(format!("Failed to get main content: {}", e)))?;
 
                 return Ok(main_content);
             }
@@ -481,16 +481,10 @@ impl BrowserFetcher {
     /// Take a screenshot of the current page.
     pub fn take_screenshot(&self, tab: &Tab, output_path: &str) -> Result<()> {
         let png_data = tab
-            .capture_screenshot(
-                CaptureScreenshotFormatOption::Png,
-                None,
-                None,
-                true,
-            )
+            .capture_screenshot(CaptureScreenshotFormatOption::Png, None, None, true)
             .map_err(|e| Error::Scraper(format!("Failed to capture screenshot: {}", e)))?;
 
-        std::fs::write(output_path, png_data)
-            .map_err(|e| Error::Io(e))?;
+        std::fs::write(output_path, png_data).map_err(|e| Error::Io(e))?;
 
         info!("Screenshot saved to: {}", output_path);
 
@@ -503,8 +497,7 @@ impl BrowserFetcher {
             .print_to_pdf(Some(PrintToPdfOptions::default()))
             .map_err(|e| Error::Scraper(format!("Failed to print to PDF: {}", e)))?;
 
-        std::fs::write(output_path, pdf_data)
-            .map_err(|e| Error::Io(e))?;
+        std::fs::write(output_path, pdf_data).map_err(|e| Error::Io(e))?;
 
         info!("PDF saved to: {}", output_path);
 

@@ -73,7 +73,10 @@ impl std::str::FromStr for ScrapeMode {
         match s.to_lowercase().as_str() {
             "fetch" => Ok(ScrapeMode::Fetch),
             "browser" => Ok(ScrapeMode::Browser),
-            _ => Err(format!("Unknown scrape mode: {}, expected 'fetch' or 'browser'", s)),
+            _ => Err(format!(
+                "Unknown scrape mode: {}, expected 'fetch' or 'browser'",
+                s
+            )),
         }
     }
 }
@@ -172,7 +175,8 @@ impl Crawler {
             block_css: false,
             headers: std::collections::HashMap::new(),
         };
-        let browser_fetcher = Arc::new(tokio::sync::Mutex::new(BrowserFetcher::new(browser_config)));
+        let browser_fetcher =
+            Arc::new(tokio::sync::Mutex::new(BrowserFetcher::new(browser_config)));
 
         Ok(Self {
             config,
@@ -198,26 +202,43 @@ impl Crawler {
             .map_err(|e| Error::InvalidUrl(format!("Invalid start URL: {}", e)))?;
         let base_domain = base_url.host_str().unwrap_or("").to_string();
 
-        debug!("Starting crawl from: {} (domain: {})", start_url, base_domain);
-        debug!("Crawl config: max_pages={}, max_depth={}, delay_ms={}",
-               self.config.max_pages, self.config.max_depth, self.config.delay_ms);
+        debug!(
+            "Starting crawl from: {} (domain: {})",
+            start_url, base_domain
+        );
+        debug!(
+            "Crawl config: max_pages={}, max_depth={}, delay_ms={}",
+            self.config.max_pages, self.config.max_depth, self.config.delay_ms
+        );
 
         queue.push_back((start_url.to_string(), 0usize));
         visited.insert(start_url.to_string());
 
         while let Some((url, depth)) = queue.pop_front() {
             let current_count = pages_count.load(Ordering::Relaxed);
-            debug!("Processing URL: {} (depth: {}, queue: {}, visited: {}, pages: {})",
-                   url, depth, queue.len(), visited.len(), current_count);
+            debug!(
+                "Processing URL: {} (depth: {}, queue: {}, visited: {}, pages: {})",
+                url,
+                depth,
+                queue.len(),
+                visited.len(),
+                current_count
+            );
 
             // Check limits
             if current_count >= self.config.max_pages {
-                debug!("Reached max_pages limit ({}), stopping crawl", self.config.max_pages);
+                debug!(
+                    "Reached max_pages limit ({}), stopping crawl",
+                    self.config.max_pages
+                );
                 break;
             }
 
             if depth > self.config.max_depth {
-                trace!("Skipping {}: depth {} exceeds max_depth {}", url, depth, self.config.max_depth);
+                trace!(
+                    "Skipping {}: depth {} exceeds max_depth {}",
+                    url, depth, self.config.max_depth
+                );
                 continue;
             }
 
@@ -237,16 +258,23 @@ impl Crawler {
             debug!("Fetching and processing: {}", url);
             match self.process_page(&url, depth).await {
                 Ok((result, links)) => {
-                    debug!("Successfully processed {}: title='{:?}', content_length={}, links={}",
-                           url, result.title, result.content.len(), links.len());
+                    debug!(
+                        "Successfully processed {}: title='{:?}', content_length={}, links={}",
+                        url,
+                        result.title,
+                        result.content.len(),
+                        links.len()
+                    );
                     results.push(result);
                     let new_count = pages_count.fetch_add(1, Ordering::Relaxed) + 1;
 
                     // Add new links to queue
                     let mut new_links = 0;
                     for link in links {
-                        trace!("Found link: {} (internal: {}, text: '{}')",
-                               link.url, link.is_internal, link.text);
+                        trace!(
+                            "Found link: {} (internal: {}, text: '{}')",
+                            link.url, link.is_internal, link.text
+                        );
                         if !visited.contains(&link.url) && link.is_internal {
                             visited.insert(link.url.clone());
                             queue.push_back((link.url, depth + 1));
@@ -254,7 +282,12 @@ impl Crawler {
                         }
                     }
                     debug!("Added {} new links to queue from {}", new_links, url);
-                    trace!("Progress: {}/{} pages, queue: {}", new_count, self.config.max_pages, queue.len());
+                    trace!(
+                        "Progress: {}/{} pages, queue: {}",
+                        new_count,
+                        self.config.max_pages,
+                        queue.len()
+                    );
                 }
                 Err(e) => {
                     warn!("Failed to process {}: {}", url, e);
@@ -288,8 +321,10 @@ impl Crawler {
             .map_err(|e| Error::InvalidUrl(format!("Invalid start URL: {}", e)))?;
         let base_domain = base_url.host_str().unwrap_or("").to_string();
 
-        info!("Starting stream crawl from: {} (domain: {}, max_concurrency: {}, delay_ms: {}, mode: {:?})",
-              start_url, base_domain, max_concurrency, delay_ms, scrape_mode);
+        info!(
+            "Starting stream crawl from: {} (domain: {}, max_concurrency: {}, delay_ms: {}, mode: {:?})",
+            start_url, base_domain, max_concurrency, delay_ms, scrape_mode
+        );
 
         // Clone necessary data for the spawned task
         let fetcher = self.fetcher.clone();
@@ -325,22 +360,39 @@ impl Crawler {
                 let current_count = pages_count.load(Ordering::Relaxed);
 
                 // Log current URL and queue status
-                info!("[Crawl] Processing URL: {} (depth: {}, queue: {}, visited: {}, pages: {})",
-                      url, depth, queue.len(), visited.len(), current_count);
+                info!(
+                    "[Crawl] Processing URL: {} (depth: {}, queue: {}, visited: {}, pages: {})",
+                    url,
+                    depth,
+                    queue.len(),
+                    visited.len(),
+                    current_count
+                );
 
                 // Check limits
                 if current_count >= max_pages {
-                    info!("Stream crawl reached max_pages limit ({}), stopping", max_pages);
+                    info!(
+                        "Stream crawl reached max_pages limit ({}), stopping",
+                        max_pages
+                    );
                     break;
                 }
 
                 if depth > max_depth {
-                    trace!("Skipping {}: depth {} exceeds max_depth {}", url, depth, max_depth);
+                    trace!(
+                        "Skipping {}: depth {} exceeds max_depth {}",
+                        url, depth, max_depth
+                    );
                     continue;
                 }
 
                 // Check URL patterns
-                if !Self::should_crawl_static(&url, &base_domain, &include_patterns, &exclude_patterns) {
+                if !Self::should_crawl_static(
+                    &url,
+                    &base_domain,
+                    &include_patterns,
+                    &exclude_patterns,
+                ) {
                     trace!("Skipping {}: does not match crawl patterns", url);
                     continue;
                 }
@@ -363,9 +415,7 @@ impl Crawler {
 
                 // Fetch and process the page based on scrape mode
                 let process_result = match scrape_mode {
-                    ScrapeMode::Fetch => {
-                        Self::process_page_static(&fetcher, &url, depth).await
-                    }
+                    ScrapeMode::Fetch => Self::process_page_static(&fetcher, &url, depth).await,
                     ScrapeMode::Browser => {
                         let mut bf = browser_fetcher.lock().await;
                         Self::process_page_with_browser(&mut *bf, &url, depth).await
@@ -377,9 +427,14 @@ impl Crawler {
                         let new_count = pages_count.fetch_add(1, Ordering::Relaxed) + 1;
 
                         // Log successful fetch
-                        info!("[Crawl] Successfully fetched: {} (title: {:?}, content_length: {}, links: {}, total_pages: {})",
-                              result.url, result.title.as_ref().map(|s| s.as_str()).unwrap_or("N/A"),
-                              result.content.len(), links.len(), new_count);
+                        info!(
+                            "[Crawl] Successfully fetched: {} (title: {:?}, content_length: {}, links: {}, total_pages: {})",
+                            result.url,
+                            result.title.as_ref().map(|s| s.as_str()).unwrap_or("N/A"),
+                            result.content.len(),
+                            links.len(),
+                            new_count
+                        );
 
                         // Send result to channel
                         if tx.send(result).await.is_err() {
@@ -397,7 +452,10 @@ impl Crawler {
                             }
                         }
                         if new_links > 0 {
-                            info!("[Crawl] Added {} new links to queue from {}", new_links, url);
+                            info!(
+                                "[Crawl] Added {} new links to queue from {}",
+                                new_links, url
+                            );
                         }
 
                         // Send progress update
@@ -413,8 +471,13 @@ impl Crawler {
 
                         // Log queue status periodically
                         if new_count % 10 == 0 {
-                            info!("[Crawl] Progress: {}/{} pages, queue: {}, visited: {}",
-                                  new_count, max_pages, queue.len(), visited.len());
+                            info!(
+                                "[Crawl] Progress: {}/{} pages, queue: {}, visited: {}",
+                                new_count,
+                                max_pages,
+                                queue.len(),
+                                visited.len()
+                            );
                         }
                     }
                     Err(e) => {
@@ -533,7 +596,10 @@ impl Crawler {
         url: &str,
         depth: usize,
     ) -> Result<(CrawlResult, Vec<crate::scraper::Link>)> {
-        debug!("Processing page: {} (mode: {:?})", url, self.config.scrape_mode);
+        debug!(
+            "Processing page: {} (mode: {:?})",
+            url, self.config.scrape_mode
+        );
 
         let fetch_result = match self.config.scrape_mode {
             ScrapeMode::Fetch => {
@@ -547,13 +613,22 @@ impl Crawler {
             }
         };
 
-        debug!("Fetched {}: status={}, content_length={}, content_type={:?}",
-               url, fetch_result.status, fetch_result.content.len(), fetch_result.content_type);
+        debug!(
+            "Fetched {}: status={}, content_length={}, content_type={:?}",
+            url,
+            fetch_result.status,
+            fetch_result.content.len(),
+            fetch_result.content_type
+        );
 
         // Stage 1: Extract main content and convert to Markdown
         trace!("Converting HTML to markdown for: {}", url);
         let article = HtmlToMarkdown::convert(&fetch_result.content, url)?;
-        debug!("Converted {}: markdown_length={}", url, article.content.len());
+        debug!(
+            "Converted {}: markdown_length={}",
+            url,
+            article.content.len()
+        );
 
         // Stage 2: Extract links from ORIGINAL HTML
         trace!("Extracting links from: {}", url);
@@ -596,7 +671,10 @@ impl Crawler {
         // Check if it's an internal link
         if let Ok(parsed) = Url::parse(url) {
             if parsed.host_str() != Some(base_domain) {
-                trace!("Excluding {}: different domain (expected {})", url, base_domain);
+                trace!(
+                    "Excluding {}: different domain (expected {})",
+                    url, base_domain
+                );
                 return false;
             }
         }

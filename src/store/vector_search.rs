@@ -130,31 +130,33 @@ impl<'a> VectorSearch<'a> {
         let library_name = library_name.to_string();
         let version_name = version_name.map(|s| s.to_string());
 
-        self.conn.with_connection_async(move |conn| {
-            let mut stmt = conn.prepare(&sql)?;
+        self.conn
+            .with_connection_async(move |conn| {
+                let mut stmt = conn.prepare(&sql)?;
 
-            let results = if version_name.is_some() {
-                stmt.query_map(
-                    rusqlite::params![
-                        library_name,
-                        version_name,
-                        vector_json,
-                        limit as i64,
-                        limit as i64,
-                    ],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )?
-                .collect::<std::result::Result<Vec<_>, _>>()?
-            } else {
-                stmt.query_map(
-                    rusqlite::params![library_name, vector_json, limit as i64, limit as i64,],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )?
-                .collect::<std::result::Result<Vec<_>, _>>()?
-            };
+                let results = if version_name.is_some() {
+                    stmt.query_map(
+                        rusqlite::params![
+                            library_name,
+                            version_name,
+                            vector_json,
+                            limit as i64,
+                            limit as i64,
+                        ],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )?
+                    .collect::<std::result::Result<Vec<_>, _>>()?
+                } else {
+                    stmt.query_map(
+                        rusqlite::params![library_name, vector_json, limit as i64, limit as i64,],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )?
+                    .collect::<std::result::Result<Vec<_>, _>>()?
+                };
 
-            Ok(results)
-        }).await
+                Ok(results)
+            })
+            .await
     }
 
     /// Perform full-text search.
@@ -194,33 +196,35 @@ impl<'a> VectorSearch<'a> {
         let library_name = library_name.to_string();
         let version_name = version_name.map(|s| s.to_string());
 
-        self.conn.with_connection_async(move |conn| {
-            let mut stmt = conn.prepare(&sql)?;
+        self.conn
+            .with_connection_async(move |conn| {
+                let mut stmt = conn.prepare(&sql)?;
 
-            let results = if version_name.is_some() {
-                stmt.query_map(
-                    rusqlite::params![library_name, version_name, escaped_query, limit as i64],
-                    |row| {
-                        let id: i64 = row.get(0)?;
-                        let score: f32 = row.get(1)?;
-                        Ok((id, -score)) // Negate because bm25 returns negative for better matches
-                    },
-                )?
-                .collect::<std::result::Result<Vec<_>, _>>()?
-            } else {
-                stmt.query_map(
-                    rusqlite::params![library_name, escaped_query, limit as i64],
-                    |row| {
-                        let id: i64 = row.get(0)?;
-                        let score: f32 = row.get(1)?;
-                        Ok((id, -score))
-                    },
-                )?
-                .collect::<std::result::Result<Vec<_>, _>>()?
-            };
+                let results = if version_name.is_some() {
+                    stmt.query_map(
+                        rusqlite::params![library_name, version_name, escaped_query, limit as i64],
+                        |row| {
+                            let id: i64 = row.get(0)?;
+                            let score: f32 = row.get(1)?;
+                            Ok((id, -score)) // Negate because bm25 returns negative for better matches
+                        },
+                    )?
+                    .collect::<std::result::Result<Vec<_>, _>>()?
+                } else {
+                    stmt.query_map(
+                        rusqlite::params![library_name, escaped_query, limit as i64],
+                        |row| {
+                            let id: i64 = row.get(0)?;
+                            let score: f32 = row.get(1)?;
+                            Ok((id, -score))
+                        },
+                    )?
+                    .collect::<std::result::Result<Vec<_>, _>>()?
+                };
 
-            Ok(results)
-        }).await
+                Ok(results)
+            })
+            .await
     }
 
     /// Combine results using Reciprocal Rank Fusion.
@@ -289,88 +293,99 @@ impl<'a> VectorSearch<'a> {
         let sql = sql.clone();
         let ids = ids.clone();
 
-        let results = self.conn.with_connection_async(move |conn| {
-            let mut stmt = conn.prepare(&sql)?;
+        let results = self
+            .conn
+            .with_connection_async(move |conn| {
+                let mut stmt = conn.prepare(&sql)?;
 
-            let rows = stmt.query_map(rusqlite::params_from_iter(ids.iter()), |row| {
-                // Parse document
-                let metadata_json: String = row.get(3)?;
-                let metadata: crate::core::ChunkMetadata =
-                    serde_json::from_str(&metadata_json).unwrap_or_default();
-                let embedding_blob: Option<Vec<u8>> = row.get(5)?;
-                let embedding = embedding_blob.map(|bytes| {
-                    bytes
-                        .chunks_exact(4)
-                        .map(|chunk| {
-                            let mut bytes = [0u8; 4];
-                            bytes.copy_from_slice(chunk);
-                            f32::from_le_bytes(bytes)
-                        })
-                        .collect()
-                });
+                let rows = stmt.query_map(rusqlite::params_from_iter(ids.iter()), |row| {
+                    // Parse document
+                    let metadata_json: String = row.get(3)?;
+                    let metadata: crate::core::ChunkMetadata =
+                        serde_json::from_str(&metadata_json).unwrap_or_default();
+                    let embedding_blob: Option<Vec<u8>> = row.get(5)?;
+                    let embedding = embedding_blob.map(|bytes| {
+                        bytes
+                            .chunks_exact(4)
+                            .map(|chunk| {
+                                let mut bytes = [0u8; 4];
+                                bytes.copy_from_slice(chunk);
+                                f32::from_le_bytes(bytes)
+                            })
+                            .collect()
+                    });
 
-                let doc = crate::core::Document {
-                    id: row.get(0)?,
-                    page_id: row.get(1)?,
-                    content: row.get(2)?,
-                    metadata,
-                    sort_order: row.get(4)?,
-                    embedding,
-                    created_at: row.get(6)?,
-                };
+                    let doc = crate::core::Document {
+                        id: row.get(0)?,
+                        page_id: row.get(1)?,
+                        content: row.get(2)?,
+                        metadata,
+                        sort_order: row.get(4)?,
+                        embedding,
+                        created_at: row.get(6)?,
+                    };
 
-                // Parse page
-                let page = crate::core::Page {
-                    id: row.get(7)?,
-                    version_id: row.get(8)?,
-                    url: row.get(9)?,
-                    title: row.get(10)?,
-                    etag: row.get(11)?,
-                    last_modified: row.get(12)?,
-                    content_type: row.get(13)?,
-                    depth: row.get(14)?,
-                    created_at: row.get(15)?,
-                    updated_at: row.get(16)?,
-                };
+                    // Parse page
+                    let page = crate::core::Page {
+                        id: row.get(7)?,
+                        version_id: row.get(8)?,
+                        url: row.get(9)?,
+                        title: row.get(10)?,
+                        etag: row.get(11)?,
+                        last_modified: row.get(12)?,
+                        content_type: row.get(13)?,
+                        depth: row.get(14)?,
+                        created_at: row.get(15)?,
+                        updated_at: row.get(16)?,
+                    };
 
-                // Parse version
-                let version = crate::core::Version {
-                    id: row.get(17)?,
-                    library_id: row.get(18)?,
-                    name: row.get(19)?,
-                    status: crate::core::VersionStatus::from_str(&row.get::<_, String>(20)?)
-                        .unwrap_or_default(),
-                    progress_pages: row.get(21)?,
-                    progress_max_pages: row.get(22)?,
-                    error_message: row.get(23)?,
-                    scraper_options: row
-                        .get::<_, Option<String>>(24)?
-                        .and_then(|s| serde_json::from_str(&s).ok()),
-                    source_url: row.get(25)?,
-                    started_at: row.get(26)?,
-                    created_at: row.get(27)?,
-                    updated_at: row.get(28)?,
-                };
+                    // Parse version
+                    let version = crate::core::Version {
+                        id: row.get(17)?,
+                        library_id: row.get(18)?,
+                        name: row.get(19)?,
+                        status: crate::core::VersionStatus::from_str(&row.get::<_, String>(20)?)
+                            .unwrap_or_default(),
+                        progress_pages: row.get(21)?,
+                        progress_max_pages: row.get(22)?,
+                        error_message: row.get(23)?,
+                        scraper_options: row
+                            .get::<_, Option<String>>(24)?
+                            .and_then(|s| serde_json::from_str(&s).ok()),
+                        source_url: row.get(25)?,
+                        started_at: row.get(26)?,
+                        created_at: row.get(27)?,
+                        updated_at: row.get(28)?,
+                    };
 
-                // Parse library
-                let library = crate::core::Library {
-                    id: row.get(29)?,
-                    name: row.get(30)?,
-                    created_at: row.get(31)?,
-                };
+                    // Parse library
+                    let library = crate::core::Library {
+                        id: row.get(29)?,
+                        name: row.get(30)?,
+                        created_at: row.get(31)?,
+                    };
 
-                Ok((doc.id, (doc, page, version, library)))
-            })?;
+                    Ok((doc.id, (doc, page, version, library)))
+                })?;
 
-            let mut map: HashMap<i64, (crate::core::Document, crate::core::Page, crate::core::Version, crate::core::Library)> =
-                HashMap::new();
-            for row in rows {
-                let (id, data) = row.map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))?;
-                map.insert(id, data);
-            }
+                let mut map: HashMap<
+                    i64,
+                    (
+                        crate::core::Document,
+                        crate::core::Page,
+                        crate::core::Version,
+                        crate::core::Library,
+                    ),
+                > = HashMap::new();
+                for row in rows {
+                    let (id, data) =
+                        row.map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))?;
+                    map.insert(id, data);
+                }
 
-            Ok(map)
-        }).await?;
+                Ok(map)
+            })
+            .await?;
 
         // Build results in the original order
         let mut search_results = Vec::with_capacity(doc_scores.len());

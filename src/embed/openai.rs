@@ -2,8 +2,8 @@
 
 use crate::core::{Error, Result};
 use crate::embed::{
-    rate_limiter::{estimate_batch_tokens, SharedRateLimiter},
     Embedder, EmbeddingModel, OPENAI_MODELS,
+    rate_limiter::{SharedRateLimiter, estimate_batch_tokens},
 };
 use async_trait::async_trait;
 use reqwest::Client as HttpClient;
@@ -277,9 +277,9 @@ mod tests {
             "test-key".to_string(),
             "text-embedding-3-small".to_string(),
             1536,
-            None,    // no rate limiter
-            3,       // max retries
-            1000,    // retry base delay
+            None, // no rate limiter
+            3,    // max retries
+            1000, // retry base delay
         )
         .unwrap();
 

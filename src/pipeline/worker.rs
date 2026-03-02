@@ -111,7 +111,10 @@ impl PipelineWorker {
                     let embeddings = match embedder_guard.embed_batch(&texts).await {
                         Ok(embs) => embs,
                         Err(e) => {
-                            warn!("Failed to generate embeddings for {}: {}", crawl_result.url, e);
+                            warn!(
+                                "Failed to generate embeddings for {}: {}",
+                                crawl_result.url, e
+                            );
                             continue;
                         }
                     };
@@ -138,7 +141,10 @@ impl PipelineWorker {
             }
 
             pages_processed += 1;
-            debug!("Processed page {}/{}: {}", pages_processed, total_pages, crawl_result.url);
+            debug!(
+                "Processed page {}/{}: {}",
+                pages_processed, total_pages, crawl_result.url
+            );
         }
 
         // Update version status to completed

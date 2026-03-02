@@ -11,8 +11,8 @@ mod types;
 pub use google::GoogleEmbedder;
 pub use none::NoneEmbedder;
 pub use openai::OpenAIEmbedder;
-pub use queue::{create_queued_embedder, EmbeddingQueue};
-pub use rate_limiter::{create_rate_limiter, RateLimiter, RateLimiterStats, SharedRateLimiter};
+pub use queue::{EmbeddingQueue, create_queued_embedder};
+pub use rate_limiter::{RateLimiter, RateLimiterStats, SharedRateLimiter, create_rate_limiter};
 pub use types::{EmbeddingModel, EmbeddingResult, GOOGLE_MODELS, OPENAI_MODELS};
 
 use crate::core::Result;
@@ -49,7 +49,11 @@ pub trait Embedder: Send + Sync {
 pub fn create_embedder(config: &EmbeddingConfig) -> Result<Box<dyn Embedder>> {
     // Create rate limiter if limits are configured
     let rate_limiter = if config.max_rpm > 0 && config.max_tpm > 0 {
-        Some(create_rate_limiter(config.max_rpm, config.max_tpm, config.request_delay_ms))
+        Some(create_rate_limiter(
+            config.max_rpm,
+            config.max_tpm,
+            config.request_delay_ms,
+        ))
     } else {
         None
     };

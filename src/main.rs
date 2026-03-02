@@ -11,9 +11,7 @@ use docs_mcp_rs::embed::{Embedder, create_embedder};
 use docs_mcp_rs::events::EventBus;
 use docs_mcp_rs::mcp::DocsMcpServer;
 use docs_mcp_rs::pipeline::{PipelineManager, ScraperOptions};
-use docs_mcp_rs::store::{
-    Connection, LibraryStore, VectorSearch, VersionStore, run_migrations,
-};
+use docs_mcp_rs::store::{Connection, LibraryStore, VectorSearch, VersionStore, run_migrations};
 use docs_mcp_rs::web::{AppState, create_router_with_mcp};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -219,15 +217,18 @@ async fn run_serve(
 
         // Create router with MCP endpoint
         let config_arc = Arc::new(config.clone());
-        let mcp_service =
-            DocsMcpServer::create_http_service(config_arc, connection.clone(), embedder.clone(), pipeline.clone());
+        let mcp_service = DocsMcpServer::create_http_service(
+            config_arc,
+            connection.clone(),
+            embedder.clone(),
+            pipeline.clone(),
+        );
         let app = create_router_with_mcp(state, mcp_service);
 
         // Create TCP listener
         let addr = std::net::SocketAddr::from(([0, 0, 0, 0], port));
         let listener = tokio::net::TcpListener::bind(addr).await?;
 
-        println!("✅ Server listening on http://{}", addr);
         println!("Press Ctrl+C to stop");
 
         // Run server

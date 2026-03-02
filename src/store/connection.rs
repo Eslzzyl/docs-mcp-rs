@@ -29,18 +29,17 @@ impl Connection {
         }
 
         // Create connection manager with initialization
-        let manager = SqliteConnectionManager::file(path)
-            .with_init(|conn| {
-                conn.execute_batch(
-                    "PRAGMA foreign_keys = ON;
+        let manager = SqliteConnectionManager::file(path).with_init(|conn| {
+            conn.execute_batch(
+                "PRAGMA foreign_keys = ON;
                      PRAGMA journal_mode = WAL;
                      PRAGMA synchronous = NORMAL;
                      PRAGMA cache_size = -64000;
                      PRAGMA temp_store = MEMORY;
                      PRAGMA mmap_size = 268435456;",
-                )?;
-                Ok(())
-            });
+            )?;
+            Ok(())
+        });
 
         // Build pool with configuration
         let pool = Pool::builder()
@@ -55,11 +54,10 @@ impl Connection {
 
     /// Open an in-memory database pool (for testing).
     pub fn in_memory() -> Result<Self> {
-        let manager = SqliteConnectionManager::memory()
-            .with_init(|conn| {
-                conn.execute_batch("PRAGMA foreign_keys = ON;")?;
-                Ok(())
-            });
+        let manager = SqliteConnectionManager::memory().with_init(|conn| {
+            conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+            Ok(())
+        });
 
         let pool = Pool::builder()
             .max_size(2) // Smaller pool for in-memory
@@ -101,9 +99,9 @@ impl Connection {
     {
         let pool = self.pool.clone();
         tokio::task::spawn_blocking(move || {
-            let conn = pool
-                .get()
-                .map_err(|e| Error::Database(format!("Failed to get connection from pool: {}", e)))?;
+            let conn = pool.get().map_err(|e| {
+                Error::Database(format!("Failed to get connection from pool: {}", e))
+            })?;
             f(&conn).map_err(|e| Error::Database(e.to_string()))
         })
         .await
@@ -134,9 +132,9 @@ impl Connection {
     {
         let pool = self.pool.clone();
         tokio::task::spawn_blocking(move || {
-            let mut conn = pool
-                .get()
-                .map_err(|e| Error::Database(format!("Failed to get connection from pool: {}", e)))?;
+            let mut conn = pool.get().map_err(|e| {
+                Error::Database(format!("Failed to get connection from pool: {}", e))
+            })?;
             let tx = conn
                 .transaction()
                 .map_err(|e| Error::Database(format!("Failed to begin transaction: {}", e)))?;
@@ -179,18 +177,18 @@ mod tests {
     #[test]
     fn test_pool_multiple_connections() {
         let conn = Connection::in_memory().expect("Failed to create connection pool");
-        
+
         // Test multiple operations in parallel
         conn.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
             .expect("Failed to create table");
-        
+
         conn.execute("INSERT INTO test (value) VALUES ('test1')")
             .expect("Failed to insert");
-        
-        let count: i64 = conn.with_connection(|c| {
-            c.query_row("SELECT COUNT(*) FROM test", [], |row| row.get(0))
-        }).expect("Failed to count");
-        
+
+        let count: i64 = conn
+            .with_connection(|c| c.query_row("SELECT COUNT(*) FROM test", [], |row| row.get(0)))
+            .expect("Failed to count");
+
         assert_eq!(count, 1);
     }
 }

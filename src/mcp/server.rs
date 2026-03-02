@@ -129,7 +129,8 @@ impl DocsMcpServer {
     #[tool(description = "Scrape and index a documentation website")]
     async fn scrape_docs(&self, Parameters(params): Parameters<ScrapeDocsParams>) -> String {
         let embedder = self.embedder.read().await;
-        let result = tools::scrape_docs(&self.connection, &**embedder, &self.pipeline, params).await;
+        let result =
+            tools::scrape_docs(&self.connection, &**embedder, &self.pipeline, params).await;
         match result {
             Ok(r) => r
                 .content
@@ -213,7 +214,10 @@ impl ServerHandler for DocsMcpServer {
         &self,
         _request: Option<rmcp::model::PaginatedRequestParams>,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> impl std::future::Future<Output = std::result::Result<rmcp::model::ListToolsResult, rmcp::ErrorData>> + Send + '_ {
+    ) -> impl std::future::Future<
+        Output = std::result::Result<rmcp::model::ListToolsResult, rmcp::ErrorData>,
+    > + Send
+    + '_ {
         let tools = self.tool_router.list_all();
         std::future::ready(Ok(rmcp::model::ListToolsResult {
             tools,
@@ -225,7 +229,10 @@ impl ServerHandler for DocsMcpServer {
         &self,
         request: rmcp::model::CallToolRequestParams,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> impl std::future::Future<Output = std::result::Result<rmcp::model::CallToolResult, rmcp::ErrorData>> + Send + '_ {
+    ) -> impl std::future::Future<
+        Output = std::result::Result<rmcp::model::CallToolResult, rmcp::ErrorData>,
+    > + Send
+    + '_ {
         use rmcp::handler::server::tool::ToolCallContext;
 
         let tool_context = ToolCallContext::new(self, request, context);

@@ -39,14 +39,23 @@ impl MarkdownSplitter {
         let mut sort_order = 0;
 
         for (idx, section) in sections.iter().enumerate() {
-            trace!("Processing section {}: level={}, title='{}', content_length={}",
-                   idx, section.level, section.title, section.content.len());
+            trace!(
+                "Processing section {}: level={}, title='{}', content_length={}",
+                idx,
+                section.level,
+                section.title,
+                section.content.len()
+            );
             let section_chunks = self.split_section(section, &mut sort_order);
             trace!("Section {} produced {} chunks", idx, section_chunks.len());
             chunks.extend(section_chunks);
         }
 
-        debug!("Markdown split complete: {} chunks produced from {} sections", chunks.len(), sections.len());
+        debug!(
+            "Markdown split complete: {} chunks produced from {} sections",
+            chunks.len(),
+            sections.len()
+        );
         chunks
     }
 
@@ -79,7 +88,8 @@ impl MarkdownSplitter {
 
                     // Merge pending headers in reverse order (oldest first)
                     for pending in pending_header_sections.drain(..).rev() {
-                        final_content = format!("{}\n\n{}", pending.content.trim(), final_content.trim());
+                        final_content =
+                            format!("{}\n\n{}", pending.content.trim(), final_content.trim());
                         // Update the path to include the parent headers
                         if final_level > pending.level {
                             let mut new_path = pending.path.clone();
@@ -123,9 +133,9 @@ impl MarkdownSplitter {
 
         // Handle the last section
         let content_trimmed = current_section.content.trim();
-        let has_real_content = !content_trimmed.is_empty() &&
-            (current_section.level == 0 ||
-             content_trimmed.len() > current_section.title.len() + 3);
+        let has_real_content = !content_trimmed.is_empty()
+            && (current_section.level == 0
+                || content_trimmed.len() > current_section.title.len() + 3);
 
         if has_real_content {
             // Prepend any pending header-only sections
@@ -193,7 +203,10 @@ impl MarkdownSplitter {
 
         // Skip if header level is 0 or negative (invalid)
         if header.level <= 0 {
-            trace!("Skipping path build for invalid header level: {}", header.level);
+            trace!(
+                "Skipping path build for invalid header level: {}",
+                header.level
+            );
             return path;
         }
 
@@ -226,8 +239,10 @@ impl MarkdownSplitter {
         let content = section.content.trim();
         let content_len = content.len();
 
-        trace!("Splitting section: title='{}', level={}, content_length={}",
-               section.title, section.level, content_len);
+        trace!(
+            "Splitting section: title='{}', level={}, content_length={}",
+            section.title, section.level, content_len
+        );
 
         // Handle empty content
         if content.is_empty() {
@@ -237,12 +252,17 @@ impl MarkdownSplitter {
 
         // Handle sections with invalid level (content before first header)
         if section.level <= 0 {
-            trace!("Processing content section with level 0: {} bytes", content_len);
+            trace!(
+                "Processing content section with level 0: {} bytes",
+                content_len
+            );
         }
 
         if content_len <= self.config.chunk_size {
-            trace!("Section '{}' fits in single chunk ({} <= {})",
-                   section.title, content_len, self.config.chunk_size);
+            trace!(
+                "Section '{}' fits in single chunk ({} <= {})",
+                section.title, content_len, self.config.chunk_size
+            );
             return vec![TextChunk::new(
                 content.to_string(),
                 ChunkMetadata {
@@ -258,8 +278,10 @@ impl MarkdownSplitter {
             )];
         }
 
-        debug!("Section '{}' needs splitting: {} bytes > chunk_size {}",
-               section.title, content_len, self.config.chunk_size);
+        debug!(
+            "Section '{}' needs splitting: {} bytes > chunk_size {}",
+            section.title, content_len, self.config.chunk_size
+        );
 
         // Split large sections
         let mut chunks = Vec::new();
@@ -278,8 +300,13 @@ impl MarkdownSplitter {
             let end = align_to_char_boundary(content, end);
             let chunk_content = content[start..end].trim();
 
-            trace!("Creating chunk {}: bytes [{}..{}] ({} bytes)",
-                   chunk_num, start, end, chunk_content.len());
+            trace!(
+                "Creating chunk {}: bytes [{}..{}] ({} bytes)",
+                chunk_num,
+                start,
+                end,
+                chunk_content.len()
+            );
 
             if !chunk_content.is_empty() {
                 chunks.push(TextChunk::new(
@@ -306,7 +333,10 @@ impl MarkdownSplitter {
             if next_start <= start {
                 // If overlap would cause us to not make progress, move forward by chunk_size
                 let forced_start = (start + self.config.chunk_size).min(content_len);
-                trace!("Forcing progress: {} -> {} (avoiding infinite loop)", start, forced_start);
+                trace!(
+                    "Forcing progress: {} -> {} (avoiding infinite loop)",
+                    start, forced_start
+                );
                 start = forced_start;
             } else {
                 start = next_start;
@@ -318,7 +348,11 @@ impl MarkdownSplitter {
             }
         }
 
-        debug!("Section '{}' split into {} chunks", section.title, chunks.len());
+        debug!(
+            "Section '{}' split into {} chunks",
+            section.title,
+            chunks.len()
+        );
         chunks
     }
 
@@ -331,15 +365,20 @@ impl MarkdownSplitter {
 
         // Bounds check: ensure start is within content
         if start >= content_len {
-            trace!("find_split_point: start ({}) >= content_len ({}), returning end",
-                   start, content_len);
+            trace!(
+                "find_split_point: start ({}) >= content_len ({}), returning end",
+                start, content_len
+            );
             return content_len;
         }
 
         let ideal_end = (start + self.config.chunk_size).min(content_len);
 
         if ideal_end == content_len {
-            trace!("find_split_point: ideal_end at content end ({}), returning end", content_len);
+            trace!(
+                "find_split_point: ideal_end at content end ({}), returning end",
+                content_len
+            );
             return content_len;
         }
 
@@ -351,8 +390,10 @@ impl MarkdownSplitter {
         if let Some(pos) = search_range.rfind("\n\n") {
             let split_point = start + pos + 2;
             let split_point = align_to_char_boundary(content, split_point);
-            trace!("find_split_point: found paragraph break at byte {} (ideal: {})",
-                   split_point, ideal_end);
+            trace!(
+                "find_split_point: found paragraph break at byte {} (ideal: {})",
+                split_point, ideal_end
+            );
             return split_point;
         }
 
@@ -360,12 +401,17 @@ impl MarkdownSplitter {
         if let Some(pos) = search_range.rfind('\n') {
             let split_point = start + pos + 1;
             let split_point = align_to_char_boundary(content, split_point);
-            trace!("find_split_point: found line break at byte {} (ideal: {})",
-                   split_point, ideal_end);
+            trace!(
+                "find_split_point: found line break at byte {} (ideal: {})",
+                split_point, ideal_end
+            );
             return split_point;
         }
 
-        trace!("find_split_point: no natural break found, using ideal_end: {}", ideal_end);
+        trace!(
+            "find_split_point: no natural break found, using ideal_end: {}",
+            ideal_end
+        );
         align_to_char_boundary(content, ideal_end)
     }
 }
@@ -439,15 +485,18 @@ mod tests {
         }
 
         // The actual content section should include parent headers
-        let actual_content_chunk = chunks
-            .iter()
-            .find(|c| c.content.contains("real content"));
-        assert!(actual_content_chunk.is_some(), "Should have chunk with actual content");
+        let actual_content_chunk = chunks.iter().find(|c| c.content.contains("real content"));
+        assert!(
+            actual_content_chunk.is_some(),
+            "Should have chunk with actual content"
+        );
 
         let content = &actual_content_chunk.unwrap().content;
         // Should include the parent headers
-        assert!(content.contains("Empty Section 1") || content.contains("Empty Section 2"),
-                "Content should include parent headers");
+        assert!(
+            content.contains("Empty Section 1") || content.contains("Empty Section 2"),
+            "Content should include parent headers"
+        );
     }
 
     #[test]
@@ -529,12 +578,17 @@ More content.
         assert!(!chunks.is_empty());
 
         // Check that intro text is included
-        let intro_chunk = chunks.iter().find(|c| c.content.contains("introductory text"));
+        let intro_chunk = chunks
+            .iter()
+            .find(|c| c.content.contains("introductory text"));
         assert!(intro_chunk.is_some(), "Should have chunk with intro text");
 
         // Check that headers are included
         let first_header_chunk = chunks.iter().find(|c| c.content.contains("First Header"));
-        assert!(first_header_chunk.is_some(), "Should have chunk with first header");
+        assert!(
+            first_header_chunk.is_some(),
+            "Should have chunk with first header"
+        );
     }
 
     #[test]
@@ -563,8 +617,14 @@ Final section with emojis: 🚀 🌟 💡 🔧 📝
 
         // Check that content is preserved
         let all_content: String = chunks.iter().map(|c| c.content.as_str()).collect();
-        assert!(all_content.contains("…"), "Should preserve ellipsis character");
-        assert!(all_content.contains("中文"), "Should preserve Chinese characters");
+        assert!(
+            all_content.contains("…"),
+            "Should preserve ellipsis character"
+        );
+        assert!(
+            all_content.contains("中文"),
+            "Should preserve Chinese characters"
+        );
         assert!(all_content.contains("🎉"), "Should preserve emoji");
     }
 
