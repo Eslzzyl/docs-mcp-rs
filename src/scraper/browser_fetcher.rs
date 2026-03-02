@@ -138,16 +138,33 @@ impl BrowserFetcher {
 
     /// Fetch content from a URL using the browser.
     pub async fn fetch(&mut self, url: &str) -> Result<FetchResult> {
-        self.fetch_with_options(url, None).await
+        self.fetch_with_options(url, None, None).await
     }
 
-    /// Fetch content with custom options.
+    /// Fetch content with cancellation support.
+    pub async fn fetch_with_cancel(
+        &mut self,
+        url: &str,
+        cancel_token: Option<&tokio_util::sync::CancellationToken>,
+    ) -> Result<FetchResult> {
+        self.fetch_with_options(url, None, cancel_token).await
+    }
+
+    /// Fetch content with custom options and cancellation support.
     pub async fn fetch_with_options(
         &mut self,
         url: &str,
         options: Option<FetchOptions>,
+        cancel_token: Option<&tokio_util::sync::CancellationToken>,
     ) -> Result<FetchResult> {
         debug!("Fetching URL with browser: {}", url);
+
+        // Check for cancellation before starting
+        if let Some(token) = cancel_token {
+            if token.is_cancelled() {
+                return Err(Error::Mcp("Job cancelled".to_string()));
+            }
+        }
 
         // Validate URL
         let parsed_url = Url::parse(url)
@@ -162,6 +179,13 @@ impl BrowserFetcher {
 
         // Initialize browser if not already done
         let browser = self.init_browser()?;
+
+        // Check for cancellation after browser init
+        if let Some(token) = cancel_token {
+            if token.is_cancelled() {
+                return Err(Error::Mcp("Job cancelled".to_string()));
+            }
+        }
 
         // Create a new tab
         let tab = browser
@@ -189,15 +213,45 @@ impl BrowserFetcher {
                 .map_err(|e| Error::Scraper(format!("Failed to set user agent: {}", e)))?;
         }
 
-        // Navigate to URL with timeout
+        // Navigate to URL with timeout and periodic cancellation checks
         let timeout = Duration::from_secs(self.config.timeout_secs);
 
         let navigate_result = tokio::time::timeout(timeout, async {
+            // Check cancellation before navigation
+            if let Some(token) = cancel_token {
+                if token.is_cancelled() {
+                    return Err(Error::Mcp("Job cancelled".to_string()));
+                }
+            }
+
             tab.navigate_to(url)
                 .map_err(|e| Error::Http(format!("Failed to navigate to {}: {}", url, e)))?;
 
-            tab.wait_until_navigated()
-                .map_err(|e| Error::Http(format!("Navigation timeout for {}: {}", url, e)))
+            // Poll for navigation completion with cancellation checks
+            let mut attempts = 0;
+            let max_attempts = timeout.as_millis() / 100;
+            loop {
+                if let Some(token) = cancel_token {
+                    if token.is_cancelled() {
+                        return Err(Error::Mcp("Job cancelled".to_string()));
+                    }
+                }
+
+                // Check if navigation is complete
+                let current_url = tab.get_url();
+                if !current_url.is_empty() && current_url != "about:blank" {
+                    break;
+                }
+
+                attempts += 1;
+                if attempts >= max_attempts as u32 {
+                    return Err(Error::Http(format!("Navigation timeout for {}", url)));
+                }
+
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+
+            Ok(())
         })
         .await
         .map_err(|_| {
@@ -213,6 +267,13 @@ impl BrowserFetcher {
 
         trace!("Page navigated successfully: {}", url);
 
+        // Check for cancellation after navigation
+        if let Some(token) = cancel_token {
+            if token.is_cancelled() {
+                return Err(Error::Mcp("Job cancelled".to_string()));
+            }
+        }
+
         // Handle custom options
         let wait_after_load_ms = options
             .as_ref()
@@ -222,7 +283,14 @@ impl BrowserFetcher {
         // Wait for specific selector if provided
         if let Some(ref selector) = options.as_ref().and_then(|o| o.wait_for_selector.as_ref()) {
             trace!("Waiting for selector: {}", selector);
-            for _ in 0..50 {
+            for i in 0..50 {
+                // Check cancellation every iteration
+                if let Some(token) = cancel_token {
+                    if token.is_cancelled() {
+                        return Err(Error::Mcp("Job cancelled".to_string()));
+                    }
+                }
+
                 // Wait up to 5 seconds
                 let check_script = format!("() => document.querySelector('{}') !== null", selector);
                 let result = tab.evaluate(&check_script, false).ok();
@@ -233,7 +301,9 @@ impl BrowserFetcher {
                         }
                     }
                 }
-                tokio::time::sleep(Duration::from_millis(100)).await;
+                if i < 49 {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
             }
         }
 
@@ -247,14 +317,27 @@ impl BrowserFetcher {
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
 
-        // Wait for JavaScript execution
+        // Wait for JavaScript execution with cancellation checks
         if wait_after_load_ms > 0 {
             trace!("Waiting {}ms for JavaScript execution", wait_after_load_ms);
-            tokio::time::sleep(Duration::from_millis(wait_after_load_ms)).await;
+            let chunks = wait_after_load_ms / 100;
+            for _ in 0..chunks {
+                if let Some(token) = cancel_token {
+                    if token.is_cancelled() {
+                        return Err(Error::Mcp("Job cancelled".to_string()));
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            // Wait remaining time
+            let remaining = wait_after_load_ms % 100;
+            if remaining > 0 {
+                tokio::time::sleep(Duration::from_millis(remaining)).await;
+            }
         }
 
         // Wait for loading indicators to disappear (common in SPAs)
-        self.wait_for_loading_indicators(&tab).ok();
+        self.wait_for_loading_indicators_with_cancel(&tab, cancel_token).await.ok();
 
         // Extract content - get the main document content
         let mut content = tab
@@ -336,7 +419,16 @@ impl BrowserFetcher {
     }
 
     /// Wait for common loading indicators to disappear.
-    fn wait_for_loading_indicators(&self, tab: &Tab) -> Result<()> {
+    async fn wait_for_loading_indicators(&self, tab: &Tab) -> Result<()> {
+        self.wait_for_loading_indicators_with_cancel(tab, None).await
+    }
+
+    /// Wait for common loading indicators to disappear with cancellation support.
+    async fn wait_for_loading_indicators_with_cancel(
+        &self,
+        tab: &Tab,
+        cancel_token: Option<&tokio_util::sync::CancellationToken>,
+    ) -> Result<()> {
         let loading_selectors = [
             ".loading",
             ".spinner",
@@ -346,6 +438,13 @@ impl BrowserFetcher {
         ];
 
         for selector in &loading_selectors {
+            // Check cancellation at the start of each selector check
+            if let Some(token) = cancel_token {
+                if token.is_cancelled() {
+                    return Ok(());
+                }
+            }
+
             let script = format!(
                 r#"() => {{
                     const el = document.querySelector('{}');
@@ -355,7 +454,16 @@ impl BrowserFetcher {
             );
 
             // Wait up to 5 seconds for loading indicator to disappear
-            for _ in 0..50 {
+            for i in 0..50 {
+                // Check cancellation every 5 iterations (every 500ms)
+                if i % 5 == 0 {
+                    if let Some(token) = cancel_token {
+                        if token.is_cancelled() {
+                            return Ok(());
+                        }
+                    }
+                }
+
                 let result = tab.evaluate(&script, false).map_err(|e| {
                     Error::Scraper(format!("Failed to check loading indicator: {}", e))
                 })?;
@@ -363,7 +471,9 @@ impl BrowserFetcher {
                 if let Some(ref value) = result.value {
                     if let Some(visible) = value.as_bool() {
                         if visible {
-                            std::thread::sleep(Duration::from_millis(100));
+                            if i < 49 {
+                                tokio::time::sleep(Duration::from_millis(100)).await;
+                            }
                             continue;
                         }
                     }

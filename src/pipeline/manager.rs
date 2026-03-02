@@ -481,8 +481,8 @@ async fn execute_job_internal(
     let max_pages = options.max_pages.unwrap_or(1000);
     let max_depth = options.max_depth.unwrap_or(3);
 
-    // Start crawling
-    let mut rx = crawler.crawl_stream(source_url, None).await?;
+    // Start crawling with cancellation support
+    let mut rx = crawler.crawl_stream(source_url, None, Some(cancel_token.clone())).await?;
 
     debug!("[{}] Starting stream crawl", job_id);
 

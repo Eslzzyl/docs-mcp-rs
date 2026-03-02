@@ -306,10 +306,12 @@ impl Crawler {
     /// Crawl a documentation site starting from the given URL and stream results.
     /// Returns a receiver channel that yields crawl results as they are processed.
     /// Optionally accepts a progress callback for real-time progress updates.
+    /// Optionally accepts a cancellation token to gracefully stop crawling.
     pub async fn crawl_stream(
         &self,
         start_url: &str,
         progress_callback: Option<ProgressCallback>,
+        cancel_token: Option<tokio_util::sync::CancellationToken>,
     ) -> Result<mpsc::Receiver<CrawlResult>> {
         let (tx, rx) = mpsc::channel(10); // Buffer size of 10
         let max_pages = self.config.max_pages;
@@ -332,6 +334,7 @@ impl Crawler {
         let include_patterns = self.config.include_patterns.clone();
         let exclude_patterns = self.config.exclude_patterns.clone();
         let start_url = start_url.to_string();
+        let cancel_token = cancel_token.clone();
 
         // Create semaphore for rate limiting concurrent requests
         let semaphore = Arc::new(Semaphore::new(max_concurrency));
@@ -357,6 +360,14 @@ impl Crawler {
             }
 
             while let Some((url, depth)) = queue.pop_front() {
+                // Check for cancellation at the start of each iteration
+                if let Some(ref token) = cancel_token {
+                    if token.is_cancelled() {
+                        info!("[Crawl] Cancellation requested, stopping crawl");
+                        break;
+                    }
+                }
+
                 let current_count = pages_count.load(Ordering::Relaxed);
 
                 // Log current URL and queue status
@@ -418,7 +429,7 @@ impl Crawler {
                     ScrapeMode::Fetch => Self::process_page_static(&fetcher, &url, depth).await,
                     ScrapeMode::Browser => {
                         let mut bf = browser_fetcher.lock().await;
-                        Self::process_page_with_browser(&mut *bf, &url, depth).await
+                        Self::process_page_with_browser(&mut *bf, &url, depth, cancel_token.as_ref()).await
                     }
                 };
 
@@ -568,8 +579,9 @@ impl Crawler {
         browser_fetcher: &mut BrowserFetcher,
         url: &str,
         depth: usize,
+        cancel_token: Option<&tokio_util::sync::CancellationToken>,
     ) -> Result<(CrawlResult, Vec<crate::scraper::Link>)> {
-        let fetch_result = browser_fetcher.fetch(url).await?;
+        let fetch_result = browser_fetcher.fetch_with_cancel(url, cancel_token).await?;
 
         // Stage 1: Extract main content and convert to Markdown
         let article = HtmlToMarkdown::convert(&fetch_result.content, url)?;
