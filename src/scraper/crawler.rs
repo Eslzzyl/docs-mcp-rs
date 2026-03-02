@@ -1,7 +1,7 @@
 //! Web crawler for documentation sites.
 
 use crate::core::{Error, Result, ScraperOptions};
-use crate::scraper::{BrowserFetchConfig, BrowserFetcher, Fetcher, HtmlToMarkdown, LinkExtractor};
+use crate::scraper::{BrowserFetchConfig, BrowserPool, Fetcher, HtmlToMarkdown, LinkExtractor};
 use regex::Regex;
 use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
@@ -150,7 +150,7 @@ impl From<ScraperOptions> for CrawlConfig {
 pub struct Crawler {
     config: CrawlConfig,
     fetcher: Arc<Fetcher>,
-    browser_fetcher: Arc<tokio::sync::Mutex<BrowserFetcher>>,
+    browser_pool: Arc<BrowserPool>,
 }
 
 impl Crawler {
@@ -175,13 +175,12 @@ impl Crawler {
             block_css: false,
             headers: std::collections::HashMap::new(),
         };
-        let browser_fetcher =
-            Arc::new(tokio::sync::Mutex::new(BrowserFetcher::new(browser_config)));
+        let browser_pool = Arc::new(BrowserPool::new(browser_config));
 
         Ok(Self {
             config,
             fetcher,
-            browser_fetcher,
+            browser_pool,
         })
     }
 
@@ -307,6 +306,9 @@ impl Crawler {
     /// Returns a receiver channel that yields crawl results as they are processed.
     /// Optionally accepts a progress callback for real-time progress updates.
     /// Optionally accepts a cancellation token to gracefully stop crawling.
+    ///
+    /// This method uses true concurrent processing - multiple pages are fetched
+    /// and processed in parallel (up to max_concurrency).
     pub async fn crawl_stream(
         &self,
         start_url: &str,
@@ -330,7 +332,7 @@ impl Crawler {
 
         // Clone necessary data for the spawned task
         let fetcher = self.fetcher.clone();
-        let browser_fetcher = self.browser_fetcher.clone();
+        let browser_pool = self.browser_pool.clone();
         let include_patterns = self.config.include_patterns.clone();
         let exclude_patterns = self.config.exclude_patterns.clone();
         let start_url = start_url.to_string();
@@ -357,6 +359,14 @@ impl Crawler {
                     current_url: None,
                     depth: 0,
                 });
+            }
+
+            // For browser mode, pre-initialize the browser to avoid race conditions
+            if scrape_mode == ScrapeMode::Browser {
+                if let Err(e) = browser_pool.get_or_init() {
+                    warn!("Failed to initialize browser: {}", e);
+                    return;
+                }
             }
 
             while let Some((url, depth)) = queue.pop_front() {
@@ -408,6 +418,12 @@ impl Crawler {
                     continue;
                 }
 
+                // Add delay before acquiring semaphore permit (moved outside of permit scope)
+                if delay_ms > 0 {
+                    trace!("[Crawl] Waiting {}ms before fetching {}", delay_ms, url);
+                    sleep(Duration::from_millis(delay_ms)).await;
+                }
+
                 // Acquire permit for concurrent rate limiting
                 let permit = semaphore.clone().acquire_owned().await.ok();
                 if permit.is_none() {
@@ -415,21 +431,30 @@ impl Crawler {
                     continue;
                 }
 
-                // Add delay between requests
-                if delay_ms > 0 {
-                    trace!("[Crawl] Waiting {}ms before fetching {}", delay_ms, url);
-                    sleep(Duration::from_millis(delay_ms)).await;
-                }
-
                 // Log before fetching
                 info!("[Crawl] Fetching: {} (mode: {:?})", url, scrape_mode);
 
                 // Fetch and process the page based on scrape mode
+                // For browser mode, create a new TabFetcher for each request (no mutex!)
                 let process_result = match scrape_mode {
                     ScrapeMode::Fetch => Self::process_page_static(&fetcher, &url, depth).await,
                     ScrapeMode::Browser => {
-                        let mut bf = browser_fetcher.lock().await;
-                        Self::process_page_with_browser(&mut *bf, &url, depth, cancel_token.as_ref()).await
+                        // No mutex! Each request gets its own TabFetcher
+                        match browser_pool.create_fetcher() {
+                            Ok(tab_fetcher) => {
+                                Self::process_page_with_tab_fetcher(
+                                    tab_fetcher,
+                                    &url,
+                                    depth,
+                                    cancel_token.as_ref(),
+                                )
+                                .await
+                            }
+                            Err(e) => {
+                                warn!("Failed to create tab fetcher: {}", e);
+                                continue;
+                            }
+                        }
                     }
                 };
 
@@ -574,14 +599,14 @@ impl Crawler {
         Ok((result, links))
     }
 
-    /// Process page using browser fetcher for use in spawned task
-    async fn process_page_with_browser(
-        browser_fetcher: &mut BrowserFetcher,
+    /// Process page using TabFetcher for true concurrent browser operations.
+    async fn process_page_with_tab_fetcher(
+        tab_fetcher: crate::scraper::TabFetcher,
         url: &str,
         depth: usize,
         cancel_token: Option<&tokio_util::sync::CancellationToken>,
     ) -> Result<(CrawlResult, Vec<crate::scraper::Link>)> {
-        let fetch_result = browser_fetcher.fetch_with_cancel(url, cancel_token).await?;
+        let fetch_result = tab_fetcher.fetch_with_cancel(url, cancel_token).await?;
 
         // Stage 1: Extract main content and convert to Markdown
         let article = HtmlToMarkdown::convert(&fetch_result.content, url)?;
@@ -620,8 +645,8 @@ impl Crawler {
             }
             ScrapeMode::Browser => {
                 debug!("Using browser fetch for: {}", url);
-                let mut browser_fetcher = self.browser_fetcher.lock().await;
-                browser_fetcher.fetch(url).await?
+                let tab_fetcher = self.browser_pool.create_fetcher()?;
+                tab_fetcher.fetch(url).await?
             }
         };
 

@@ -482,7 +482,9 @@ async fn execute_job_internal(
     let max_depth = options.max_depth.unwrap_or(3);
 
     // Start crawling with cancellation support
-    let mut rx = crawler.crawl_stream(source_url, None, Some(cancel_token.clone())).await?;
+    let mut rx = crawler
+        .crawl_stream(source_url, None, Some(cancel_token.clone()))
+        .await?;
 
     debug!("[{}] Starting stream crawl", job_id);
 

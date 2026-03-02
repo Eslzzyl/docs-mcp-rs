@@ -3,8 +3,8 @@
 use crate::core::{Config, Error, Result};
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::ffi::sqlite3_auto_extension;
 use rusqlite::Connection as RusqliteConnection;
+use rusqlite::ffi::sqlite3_auto_extension;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::Once;
@@ -14,12 +14,10 @@ static VEC_INIT: Once = Once::new();
 
 /// Register sqlite-vec extension to be auto-loaded for all new connections.
 fn ensure_vec_extension() {
-    VEC_INIT.call_once(|| {
-        unsafe {
-            sqlite3_auto_extension(Some(std::mem::transmute(
-                sqlite_vec::sqlite3_vec_init as *const (),
-            )));
-        }
+    VEC_INIT.call_once(|| unsafe {
+        sqlite3_auto_extension(Some(std::mem::transmute(
+            sqlite_vec::sqlite3_vec_init as *const (),
+        )));
     });
 }
 

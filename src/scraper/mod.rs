@@ -8,7 +8,9 @@ mod fetcher;
 mod link_extractor;
 mod parser;
 
-pub use browser_fetcher::{BrowserFetchConfig, BrowserFetcher, FetchOptions};
+pub use browser_fetcher::{
+    BrowserFetchConfig, BrowserFetcher, BrowserPool, FetchOptions, TabFetcher,
+};
 pub use client::HttpClient;
 pub use converter::{ConversionResult, HtmlToMarkdown};
 pub use crawler::{CrawlConfig, CrawlProgress, CrawlResult, Crawler, ProgressCallback};
