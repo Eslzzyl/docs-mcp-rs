@@ -1,0 +1,12 @@
+/* Docs MCP Web UI - Main Stylesheet */
+
+/* Import all CSS modules */
+@import url('variables.css');
+@import url('base.css');
+@import url('header.css');
+@import url('navigation.css');
+@import url('components.css');
+@import url('search.css');
+@import url('jobs.css');
+@import url('toast.css');
+@import url('responsive.css');

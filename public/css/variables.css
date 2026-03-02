@@ -1,0 +1,55 @@
+/* Docs MCP Web UI - CSS Variables */
+
+:root {
+    --primary: #3b82f6;
+    --primary-hover: #2563eb;
+    --secondary: #6b7280;
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --error: #ef4444;
+    --radius: 8px;
+
+    /* Dark mode (default) */
+    --bg: #0f172a;
+    --bg-card: #1e293b;
+    --bg-input: #334155;
+    --text: #f1f5f9;
+    --text-muted: #94a3b8;
+    --border: #475569;
+    --shadow-color: rgba(0, 0, 0, 0.3);
+}
+
+/* Light mode - auto detect */
+@media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+        --bg: #f8fafc;
+        --bg-card: #ffffff;
+        --bg-input: #f1f5f9;
+        --text: #1e293b;
+        --text-muted: #64748b;
+        --border: #e2e8f0;
+        --shadow-color: rgba(0, 0, 0, 0.1);
+    }
+}
+
+/* Light mode - manual override */
+:root[data-theme="light"] {
+    --bg: #f8fafc;
+    --bg-card: #ffffff;
+    --bg-input: #f1f5f9;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+    --shadow-color: rgba(0, 0, 0, 0.1);
+}
+
+/* Dark mode - manual override */
+:root[data-theme="dark"] {
+    --bg: #0f172a;
+    --bg-card: #1e293b;
+    --bg-input: #334155;
+    --text: #f1f5f9;
+    --text-muted: #94a3b8;
+    --border: #475569;
+    --shadow-color: rgba(0, 0, 0, 0.3);
+}

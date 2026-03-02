@@ -1,0 +1,92 @@
+/* Docs MCP Web UI - Job Styles */
+
+/* Job Status */
+.job-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.job-status.queued {
+    background: var(--secondary);
+    color: white;
+}
+
+.job-status.running {
+    background: var(--primary);
+    color: white;
+}
+
+.job-status.completed {
+    background: var(--success);
+    color: white;
+}
+
+.job-status.failed {
+    background: var(--error);
+    color: white;
+}
+
+.job-status.cancelled {
+    background: var(--warning);
+    color: white;
+}
+
+/* Progress Bar */
+.progress-container {
+    margin-top: 0.75rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border);
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: var(--bg-input);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), #8b5cf6);
+    transition: width 0.3s ease;
+}
+
+/* Indeterminate progress bar for discovery phase */
+.progress-bar.indeterminate .progress-fill {
+    width: 30%;
+    animation: indeterminate 1.5s infinite ease-in-out;
+    background: linear-gradient(90deg, var(--primary), #8b5cf6, var(--primary));
+}
+
+@keyframes indeterminate {
+    0% {
+        transform: translateX(-100%);
+    }
+    50% {
+        transform: translateX(233%);
+    }
+    100% {
+        transform: translateX(-100%);
+    }
+}
+
+.progress-text {
+    font-weight: 500;
+    color: var(--text);
+}
+
+.current-url {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}

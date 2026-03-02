@@ -1,0 +1,85 @@
+/* Docs MCP Web UI - Search Styles */
+
+/* Search Section */
+.search-section {
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border);
+}
+
+.search-box {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.search-box select {
+    width: 200px;
+    padding: 0.75rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+}
+
+.search-box input {
+    flex: 1;
+    padding: 0.75rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 1rem;
+}
+
+.search-box input:focus,
+.search-box select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Search Results */
+.search-results {
+    display: grid;
+    gap: 1rem;
+}
+
+.search-result {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+}
+
+.search-result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.search-result-title {
+    font-weight: 600;
+    color: var(--primary);
+}
+
+.search-result-score {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    background: var(--primary);
+    color: white;
+    border-radius: 4px;
+}
+
+.search-result-url {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+}
+
+.search-result-content {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+}

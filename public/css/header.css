@@ -1,0 +1,130 @@
+/* Docs MCP Web UI - Header Styles */
+
+header {
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 100%;
+}
+
+.header-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 1;
+}
+
+header h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    background: linear-gradient(135deg, var(--primary), #8b5cf6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 0;
+}
+
+.subtitle {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    margin: 0;
+}
+
+/* Header Controls */
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+/* Language Selector */
+.language-select {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.5rem;
+    color: var(--text);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    height: 36px;
+}
+
+.language-select:hover {
+    background: var(--bg-input);
+    border-color: var(--primary);
+}
+
+.language-select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.language-select option {
+    background: var(--bg-card);
+    color: var(--text);
+}
+
+/* Theme Toggle */
+.theme-toggle {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.5rem;
+    cursor: pointer;
+    color: var(--text);
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+}
+
+.theme-toggle:hover {
+    background: var(--bg-input);
+    border-color: var(--primary);
+}
+
+.theme-toggle svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* Default: show moon icon (for dark mode) */
+.sun-icon {
+    display: none;
+}
+
+.moon-icon {
+    display: block;
+}
+
+/* Light mode: show sun icon */
+:root[data-theme="light"] .sun-icon {
+    display: block;
+}
+
+:root[data-theme="light"] .moon-icon {
+    display: none;
+}
+
+/* Auto-detect light mode (no data-theme set) */
+@media (prefers-color-scheme: light) {
+    :root:not([data-theme]) .sun-icon {
+        display: block;
+    }
+
+    :root:not([data-theme]) .moon-icon {
+        display: none;
+    }
+}

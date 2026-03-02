@@ -1,0 +1,34 @@
+/* Docs MCP Web UI - Toast Notification Styles */
+
+/* Toast */
+.toast {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    padding: 1rem 1.5rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 12px var(--shadow-color);
+    transition:
+        transform 0.3s,
+        opacity 0.3s;
+    z-index: 1000;
+}
+
+.toast.hidden {
+    transform: translateY(100px);
+    opacity: 0;
+}
+
+.toast.success {
+    border-left: 4px solid var(--success);
+}
+
+.toast.error {
+    border-left: 4px solid var(--error);
+}
+
+.toast.info {
+    border-left: 4px solid var(--primary);
+}
