@@ -48,21 +48,54 @@ impl From<JobStatus> for VersionStatus {
     }
 }
 
+/// Crawl phase enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CrawlPhase {
+    /// Discovering pages (exploration phase).
+    Discovering,
+    /// Scraping content (actual crawling).
+    Scraping,
+}
+
+impl Default for CrawlPhase {
+    fn default() -> Self {
+        Self::Discovering
+    }
+}
+
 /// Progress information for a running job.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JobProgress {
+    /// Current phase of the crawl.
+    #[serde(default)]
+    pub phase: CrawlPhase,
     /// Number of pages scraped so far.
     pub pages_scraped: usize,
-    /// Total pages to scrape (estimated).
-    pub total_pages: usize,
-    /// Total pages discovered.
+    /// Total pages discovered (including queue).
     pub total_discovered: usize,
+    /// Pages currently in queue waiting to be processed.
+    pub queue_length: usize,
+    /// Maximum pages limit.
+    pub max_pages: usize,
+    /// Total pages to scrape (effective total, min of discovered and max_pages).
+    #[serde(default = "default_total_pages")]
+    pub total_pages: usize,
+    /// Number of pages explored/during discovery phase.
+    pub pages_explored: usize,
     /// Current URL being processed.
     pub current_url: Option<String>,
     /// Current depth.
     pub depth: usize,
     /// Maximum depth.
     pub max_depth: usize,
+    /// Whether the total is still being discovered.
+    #[serde(default)]
+    pub is_discovering: bool,
+}
+
+fn default_total_pages() -> usize {
+    1
 }
 
 /// Pipeline job representation.
@@ -211,12 +244,17 @@ mod tests {
         assert_eq!(event.event_type, EventType::JobStatusChange);
 
         let progress = JobProgress {
+            phase: CrawlPhase::Scraping,
             pages_scraped: 10,
             total_pages: 100,
             total_discovered: 150,
+            queue_length: 50,
+            max_pages: 100,
+            pages_explored: 100,
             current_url: Some("https://example.com/page".to_string()),
             depth: 2,
             max_depth: 5,
+            is_discovering: false,
         };
 
         let event = Event::job_progress(job, progress);

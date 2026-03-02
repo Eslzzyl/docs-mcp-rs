@@ -493,6 +493,25 @@ header h1 {
     transition: width 0.3s ease;
 }
 
+/* Indeterminate progress bar for discovery phase */
+.progress-bar.indeterminate .progress-fill {
+    width: 30%;
+    animation: indeterminate 1.5s infinite ease-in-out;
+    background: linear-gradient(90deg, var(--primary), #8b5cf6, var(--primary));
+}
+
+@keyframes indeterminate {
+    0% {
+        transform: translateX(-100%);
+    }
+    50% {
+        transform: translateX(233%);
+    }
+    100% {
+        transform: translateX(-100%);
+    }
+}
+
 .progress-text {
     font-weight: 500;
     color: var(--text);

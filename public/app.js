@@ -261,24 +261,66 @@ async function loadJobs() {
     .join("");
 }
 
+// Render progress HTML based on job status and phase
+function renderProgressHtml(status, progress) {
+  // Show progress for running and queued jobs
+  if (status !== "running" && status !== "queued") {
+    return "";
+  }
+
+  // If no progress yet, show initial state
+  if (!progress) {
+    return `
+      <div class="progress-container">
+        <div class="progress-bar indeterminate">
+          <div class="progress-fill"></div>
+        </div>
+        <p class="card-meta progress-text">Initializing...</p>
+      </div>
+    `;
+  }
+
+  const phase = progress.phase || "discovering";
+  const isDiscovering = phase === "discovering" || progress.is_discovering;
+  
+  // Calculate progress percentage
+  let progressPercent = 0;
+  let progressText = "";
+  
+  if (isDiscovering) {
+    // During discovery phase, show indeterminate progress
+    return `
+      <div class="progress-container">
+        <div class="progress-bar indeterminate">
+          <div class="progress-fill"></div>
+        </div>
+        <p class="card-meta progress-text">🔍 Discovering pages... (${progress.total_discovered} found, ${progress.queue_length} in queue)</p>
+        <p class="card-meta current-url">Current: ${progress.current_url || "Scanning..."}</p>
+      </div>
+    `;
+  } else {
+    // During scraping phase, show actual progress
+    const total = progress.total_pages || 1;
+    const scraped = progress.pages_scraped || 0;
+    progressPercent = Math.round((scraped / total) * 100);
+    progressText = `${scraped}/${total} pages (${progressPercent}%)`;
+    
+    return `
+      <div class="progress-container">
+        <div class="progress-bar">
+          <div class="progress-fill" style="width: ${progressPercent}%"></div>
+        </div>
+        <p class="card-meta progress-text">📄 ${progressText}</p>
+        <p class="card-meta current-url">Current: ${progress.current_url || "Processing..."}</p>
+      </div>
+    `;
+  }
+}
+
 // Render Job Card
 function renderJobCard(job) {
   const progress = job.progress;
-  const progressPercent = progress
-    ? Math.round((progress.pages_scraped / progress.total_pages) * 100)
-    : 0;
-  const progressHtml =
-    job.status === "running" && progress
-      ? `
-            <div class="progress-container">
-                <div class="progress-bar">
-                    <div class="progress-fill" style="width: ${progressPercent}%"></div>
-                </div>
-                <p class="card-meta progress-text">${progress.pages_scraped}/${progress.total_pages} pages (${progressPercent}%)</p>
-                <p class="card-meta current-url">Current: ${progress.current_url || "Starting..."}</p>
-            </div>
-        `
-      : "";
+  const progressHtml = renderProgressHtml(job.status, progress);
 
   const cancelBtn =
     job.status === "running" || job.status === "queued"
@@ -471,10 +513,13 @@ function connectSSE() {
 
   eventSource.onmessage = (e) => {
     try {
+      console.log("[SSE] Raw data:", e.data);
       const event = JSON.parse(e.data);
+      console.log("[SSE] Parsed event:", event);
       handleSSEEvent(event);
     } catch (err) {
       console.error("Failed to parse SSE event:", err);
+      console.error("[SSE] Raw data that failed:", e.data);
     }
   };
 }
@@ -483,12 +528,19 @@ function connectSSE() {
 function handleSSEEvent(event) {
   console.log("SSE event:", event.type);
 
+  // Handle nested payload structure
+  const payload = event.payload?.payload || event.payload;
+
   switch (event.type) {
     case "JOB_STATUS_CHANGE":
       loadJobs();
       break;
     case "JOB_PROGRESS":
-      updateJobProgress(event.payload.job, event.payload.progress);
+      if (payload?.job && payload?.progress) {
+        updateJobProgress(payload.job, payload.progress);
+      } else {
+        console.warn("JOB_PROGRESS event missing job or progress:", event);
+      }
       break;
     case "LIBRARY_CHANGE":
       loadLibraries();
@@ -514,44 +566,44 @@ function updateJobProgress(job, progress) {
     statusEl.textContent = job.status;
   }
 
-  // Update progress bar and text
-  if (progress) {
-    const percent = Math.round(
-      (progress.pages_scraped / progress.total_pages) * 100,
-    );
+  // Skip if no progress
+  if (!progress) {
+    return;
+  }
 
-    // Find or create progress container
-    let progressContainer = card.querySelector(".progress-container");
-    if (!progressContainer) {
-      progressContainer = document.createElement("div");
-      progressContainer.className = "progress-container";
-      progressContainer.innerHTML = `
-        <div class="progress-bar">
-          <div class="progress-fill" style="width: ${percent}%"></div>
-        </div>
-        <p class="card-meta progress-text"></p>
-        <p class="card-meta current-url"></p>
-      `;
-      card.querySelector(".card-body").appendChild(progressContainer);
-    }
+  const phase = progress.phase || "discovering";
+  const isDiscovering = phase === "discovering" || progress.is_discovering;
 
-    // Update progress bar
-    const progressFill = progressContainer.querySelector(".progress-fill");
-    if (progressFill) {
-      progressFill.style.width = `${percent}%`;
-    }
+  // Find or create progress container
+  let progressContainer = card.querySelector(".progress-container");
+  if (!progressContainer) {
+    progressContainer = document.createElement("div");
+    progressContainer.className = "progress-container";
+    card.querySelector(".card-body").appendChild(progressContainer);
+  }
 
-    // Update progress text
-    const progressText = progressContainer.querySelector(".progress-text");
-    if (progressText) {
-      progressText.textContent = `${progress.pages_scraped}/${progress.total_pages} pages (${percent}%)`;
-    }
+  if (isDiscovering) {
+    // Discovery phase - show indeterminate progress
+    progressContainer.innerHTML = `
+      <div class="progress-bar indeterminate">
+        <div class="progress-fill"></div>
+      </div>
+      <p class="card-meta progress-text">🔍 Discovering pages... (${progress.total_discovered} found, ${progress.queue_length} in queue)</p>
+      <p class="card-meta current-url">Current: ${progress.current_url || "Scanning..."}</p>
+    `;
+  } else {
+    // Scraping phase - show actual progress
+    const total = progress.total_pages || 1;
+    const scraped = progress.pages_scraped || 0;
+    const percent = Math.round((scraped / total) * 100);
 
-    // Update current URL
-    const currentUrlEl = progressContainer.querySelector(".current-url");
-    if (currentUrlEl) {
-      currentUrlEl.textContent = `Current: ${progress.current_url || "Starting..."}`;
-    }
+    progressContainer.innerHTML = `
+      <div class="progress-bar">
+        <div class="progress-fill" style="width: ${percent}%"></div>
+      </div>
+      <p class="card-meta progress-text">📄 ${scraped}/${total} pages (${percent}%)</p>
+      <p class="card-meta current-url">Current: ${progress.current_url || "Processing..."}</p>
+    `;
   }
 }
 

@@ -78,8 +78,8 @@ impl PipelineWorker {
         // Update status to running
         version_store.update_status(ver.id, crate::core::types::VersionStatus::Running)?;
 
-        // Crawl the site using streaming
-        let mut rx = crawler.crawl_stream(source_url).await?;
+        // Crawl the site using streaming (no progress callback in worker)
+        let mut rx = crawler.crawl_stream(source_url, None).await?;
         let mut pages_processed = 0;
         let mut total_pages = 0usize;
 

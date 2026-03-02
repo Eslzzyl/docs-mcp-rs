@@ -4,4 +4,4 @@ mod event_bus;
 mod types;
 
 pub use event_bus::EventBus;
-pub use types::{Event, EventPayload, EventType, Job, JobProgress, JobStatus};
+pub use types::{CrawlPhase, Event, EventPayload, EventType, Job, JobProgress, JobStatus};

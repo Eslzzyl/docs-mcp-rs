@@ -4,7 +4,7 @@ use crate::core::{
     ChunkMetadata, NewDocument, NewLibrary, NewPage, NewVersion, Result, ScraperOptions,
 };
 use crate::embed::Embedder;
-use crate::events::{Event, EventBus, Job, JobProgress, JobStatus};
+use crate::events::{CrawlPhase, Event, EventBus, Job, JobProgress, JobStatus};
 use crate::scraper::{CrawlConfig, Crawler};
 use crate::splitter::MarkdownSplitter;
 use crate::store::{Connection, DocumentStore, LibraryStore, PageStore, VersionStore};
@@ -478,44 +478,106 @@ async fn execute_job_internal(
     };
 
     // Crawl the site using streaming
-    let mut rx = crawler.crawl_stream(source_url).await?;
-    let mut pages_scraped = 0;
-    let mut total_pages = 0usize;
+    let max_pages = options.max_pages.unwrap_or(1000);
+    let max_depth = options.max_depth.unwrap_or(3);
+    
+    // Start crawling
+    let mut rx = crawler.crawl_stream(source_url, None).await?;
 
     debug!("[{}] Starting stream crawl", job_id);
 
     // Get embedder for processing
     let embedder_guard = embedder.read().await;
+    
+    // Progress tracking
+    let mut pages_scraped = 0;
+    let mut last_progress_update = std::time::Instant::now();
+    
+    // Send initial progress
+    {
+        let progress = JobProgress {
+            phase: CrawlPhase::Discovering,
+            pages_scraped: 0,
+            total_discovered: 1,
+            queue_length: 1,
+            max_pages,
+            total_pages: 1,
+            pages_explored: 1,
+            current_url: Some(source_url.to_string()),
+            depth: 0,
+            max_depth,
+            is_discovering: true,
+        };
+        let mut jobs_guard = jobs.lock().await;
+        if let Some(internal_job) = jobs_guard.get_mut(job_id) {
+            internal_job.job.progress = Some(progress.clone());
+            let job = internal_job.job.clone();
+            event_bus.emit(Event::job_progress(job, progress));
+        }
+    }
 
     // Process pages as they arrive from the stream
     while let Some(crawl_result) = rx.recv().await {
-        total_pages += 1;
-
         // Check for cancellation
         if cancel_token.is_cancelled() {
             return Err(crate::core::Error::Mcp("Job cancelled".to_string()));
         }
 
         pages_scraped += 1;
-
-        // Update progress
-        let progress = JobProgress {
-            pages_scraped,
-            total_pages,
-            total_discovered: total_pages,
-            current_url: Some(crawl_result.url.clone()),
-            depth: crawl_result.depth,
-            max_depth: options.max_depth.unwrap_or(3),
+        
+        // Estimate discovered pages (pages scraped + likely more in queue)
+        // We don't have direct access to queue length, so we estimate based on progress
+        // Initially we estimate higher to show discovering phase
+        let estimated_queue = if pages_scraped < 5 {
+            // During early phase, assume there are more pages to discover
+            std::cmp::max(3, pages_scraped * 2)
+        } else {
+            // Later phase, estimate based on observed pattern
+            std::cmp::max(1, pages_scraped / 3)
         };
+        let total_discovered = pages_scraped + estimated_queue;
 
-        // Update job progress and emit event
-        {
+        // Send progress update (throttled to every 50ms, but always send for first 5 pages)
+        let now = std::time::Instant::now();
+        let should_update = pages_scraped <= 5 || now.duration_since(last_progress_update).as_millis() >= 50;
+        
+        if should_update {
+            // Determine phase: show "Discovering" until we've processed 3 pages AND have a reasonable estimate
+            let phase = if pages_scraped < 3 {
+                CrawlPhase::Discovering
+            } else {
+                CrawlPhase::Scraping
+            };
+            
+            let effective_total = std::cmp::min(total_discovered, max_pages);
+            
+            let progress = JobProgress {
+                phase: phase.clone(),
+                pages_scraped,
+                total_discovered,
+                queue_length: estimated_queue,
+                max_pages,
+                total_pages: std::cmp::max(effective_total, 1),
+                pages_explored: total_discovered,
+                current_url: Some(crawl_result.url.clone()),
+                depth: crawl_result.depth,
+                max_depth,
+                is_discovering: phase == CrawlPhase::Discovering,
+            };
+            
+            info!("[{}] Progress update: phase={:?}, scraped={}/{}, queue={}", 
+                  job_id, phase, pages_scraped, effective_total, estimated_queue);
+            
+            // Update job progress and emit event
             let mut jobs_guard = jobs.lock().await;
             if let Some(internal_job) = jobs_guard.get_mut(job_id) {
                 internal_job.job.progress = Some(progress.clone());
                 let job = internal_job.job.clone();
                 event_bus.emit(Event::job_progress(job, progress));
             }
+            drop(jobs_guard);
+            
+            last_progress_update = now;
         }
 
         // Create page record

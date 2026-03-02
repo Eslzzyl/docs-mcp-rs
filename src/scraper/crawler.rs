@@ -12,6 +12,26 @@ use tokio::time::sleep;
 use tracing::{debug, info, trace, warn};
 use url::Url;
 
+/// Progress information during crawling.
+#[derive(Debug, Clone)]
+pub struct CrawlProgress {
+    /// Number of pages scraped so far.
+    pub pages_scraped: usize,
+    /// Total pages discovered (including in queue).
+    pub total_discovered: usize,
+    /// Current queue length.
+    pub queue_length: usize,
+    /// Current URL being processed.
+    pub current_url: Option<String>,
+    /// Current depth.
+    pub depth: usize,
+}
+
+/// Callback for progress updates.
+pub type ProgressCallback = Arc<dyn Fn(CrawlProgress) + Send + Sync>;
+
+/// Result of crawling a page.
+
 /// Result of crawling a page.
 #[derive(Debug, Clone)]
 pub struct CrawlResult {
@@ -199,7 +219,12 @@ impl Crawler {
 
     /// Crawl a documentation site starting from the given URL and stream results.
     /// Returns a receiver channel that yields crawl results as they are processed.
-    pub async fn crawl_stream(&self, start_url: &str) -> Result<mpsc::Receiver<CrawlResult>> {
+    /// Optionally accepts a progress callback for real-time progress updates.
+    pub async fn crawl_stream(
+        &self,
+        start_url: &str,
+        progress_callback: Option<ProgressCallback>,
+    ) -> Result<mpsc::Receiver<CrawlResult>> {
         let (tx, rx) = mpsc::channel(10); // Buffer size of 10
         let max_pages = self.config.max_pages;
         let max_depth = self.config.max_depth;
@@ -232,6 +257,17 @@ impl Crawler {
 
             let parser = HtmlParser::new();
             let converter = HtmlToMarkdown::new();
+
+            // Send initial progress
+            if let Some(ref callback) = progress_callback {
+                callback(CrawlProgress {
+                    pages_scraped: 0,
+                    total_discovered: 1,
+                    queue_length: 1,
+                    current_url: None,
+                    depth: 0,
+                });
+            }
 
             while let Some((url, depth)) = queue.pop_front() {
                 let current_count = pages_count.load(Ordering::Relaxed);
@@ -300,6 +336,17 @@ impl Crawler {
                         }
                         if new_links > 0 {
                             info!("[Crawl] Added {} new links to queue from {}", new_links, url);
+                        }
+
+                        // Send progress update
+                        if let Some(ref callback) = progress_callback {
+                            callback(CrawlProgress {
+                                pages_scraped: new_count,
+                                total_discovered: new_count + queue.len(),
+                                queue_length: queue.len(),
+                                current_url: Some(url),
+                                depth,
+                            });
                         }
 
                         // Log queue status periodically
