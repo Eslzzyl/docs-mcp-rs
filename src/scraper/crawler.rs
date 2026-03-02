@@ -1,7 +1,7 @@
 //! Web crawler for documentation sites.
 
 use crate::core::{Error, Result, ScraperOptions};
-use crate::scraper::{Fetcher, HtmlToMarkdown, LinkExtractor};
+use crate::scraper::{BrowserFetchConfig, BrowserFetcher, Fetcher, HtmlToMarkdown, LinkExtractor};
 use regex::Regex;
 use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
@@ -51,6 +51,33 @@ pub struct CrawlResult {
     pub depth: usize,
 }
 
+/// Scrape mode for determining how to fetch pages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScrapeMode {
+    /// Simple HTTP fetch.
+    Fetch,
+    /// Browser-based rendering.
+    Browser,
+}
+
+impl Default for ScrapeMode {
+    fn default() -> Self {
+        ScrapeMode::Browser
+    }
+}
+
+impl std::str::FromStr for ScrapeMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "fetch" => Ok(ScrapeMode::Fetch),
+            "browser" => Ok(ScrapeMode::Browser),
+            _ => Err(format!("Unknown scrape mode: {}, expected 'fetch' or 'browser'", s)),
+        }
+    }
+}
+
 /// Crawler configuration.
 #[derive(Debug, Clone)]
 pub struct CrawlConfig {
@@ -70,6 +97,8 @@ pub struct CrawlConfig {
     pub timeout_secs: u64,
     /// User agent string.
     pub user_agent: String,
+    /// Scrape mode.
+    pub scrape_mode: ScrapeMode,
 }
 
 impl Default for CrawlConfig {
@@ -83,6 +112,7 @@ impl Default for CrawlConfig {
             exclude_patterns: Vec::new(),
             timeout_secs: 30,
             user_agent: format!("docs-mcp-rs/{}", env!("CARGO_PKG_VERSION")),
+            scrape_mode: ScrapeMode::Browser,
         }
     }
 }
@@ -103,6 +133,11 @@ impl From<ScraperOptions> for CrawlConfig {
         if let Some(exclude) = options.exclude_patterns {
             config.exclude_patterns = exclude.iter().filter_map(|p| Regex::new(p).ok()).collect();
         }
+        if let Some(mode) = options.scrape_mode {
+            if let Ok(scrape_mode) = mode.parse::<ScrapeMode>() {
+                config.scrape_mode = scrape_mode;
+            }
+        }
 
         config
     }
@@ -112,6 +147,7 @@ impl From<ScraperOptions> for CrawlConfig {
 pub struct Crawler {
     config: CrawlConfig,
     fetcher: Arc<Fetcher>,
+    browser_fetcher: Arc<tokio::sync::Mutex<BrowserFetcher>>,
 }
 
 impl Crawler {
@@ -122,7 +158,27 @@ impl Crawler {
             config.timeout_secs,
         )?));
 
-        Ok(Self { config, fetcher })
+        let browser_config = BrowserFetchConfig {
+            chrome_path: std::env::var("CHROME_PATH").ok(),
+            headless: true,
+            timeout_secs: config.timeout_secs,
+            wait_after_load_ms: config.delay_ms.saturating_mul(2),
+            user_agent: Some(config.user_agent.clone()),
+            window_width: 1920,
+            window_height: 1080,
+            extract_shadow_dom: true,
+            process_iframes: true,
+            block_images: true,
+            block_css: false,
+            headers: std::collections::HashMap::new(),
+        };
+        let browser_fetcher = Arc::new(tokio::sync::Mutex::new(BrowserFetcher::new(browser_config)));
+
+        Ok(Self {
+            config,
+            fetcher,
+            browser_fetcher,
+        })
     }
 
     /// Create a crawler with default configuration.
@@ -227,15 +283,17 @@ impl Crawler {
         let max_depth = self.config.max_depth;
         let delay_ms = self.config.delay_ms;
         let max_concurrency = self.config.max_concurrency;
+        let scrape_mode = self.config.scrape_mode;
         let base_url = Url::parse(start_url)
             .map_err(|e| Error::InvalidUrl(format!("Invalid start URL: {}", e)))?;
         let base_domain = base_url.host_str().unwrap_or("").to_string();
 
-        info!("Starting stream crawl from: {} (domain: {}, max_concurrency: {}, delay_ms: {})",
-              start_url, base_domain, max_concurrency, delay_ms);
+        info!("Starting stream crawl from: {} (domain: {}, max_concurrency: {}, delay_ms: {}, mode: {:?})",
+              start_url, base_domain, max_concurrency, delay_ms, scrape_mode);
 
         // Clone necessary data for the spawned task
         let fetcher = self.fetcher.clone();
+        let browser_fetcher = self.browser_fetcher.clone();
         let include_patterns = self.config.include_patterns.clone();
         let exclude_patterns = self.config.exclude_patterns.clone();
         let start_url = start_url.to_string();
@@ -301,10 +359,20 @@ impl Crawler {
                 }
 
                 // Log before fetching
-                info!("[Crawl] Fetching: {}", url);
+                info!("[Crawl] Fetching: {} (mode: {:?})", url, scrape_mode);
 
-                // Fetch and process the page
-                match Self::process_page_static(&fetcher, &url, depth).await {
+                // Fetch and process the page based on scrape mode
+                let process_result = match scrape_mode {
+                    ScrapeMode::Fetch => {
+                        Self::process_page_static(&fetcher, &url, depth).await
+                    }
+                    ScrapeMode::Browser => {
+                        let mut bf = browser_fetcher.lock().await;
+                        Self::process_page_with_browser(&mut *bf, &url, depth).await
+                    }
+                };
+
+                match process_result {
                     Ok((result, links)) => {
                         let new_count = pages_count.fetch_add(1, Ordering::Relaxed) + 1;
 
@@ -432,14 +500,52 @@ impl Crawler {
         Ok((result, links))
     }
 
+    /// Process page using browser fetcher for use in spawned task
+    async fn process_page_with_browser(
+        browser_fetcher: &mut BrowserFetcher,
+        url: &str,
+        depth: usize,
+    ) -> Result<(CrawlResult, Vec<crate::scraper::Link>)> {
+        let fetch_result = browser_fetcher.fetch(url).await?;
+
+        // Stage 1: Extract main content and convert to Markdown
+        let article = HtmlToMarkdown::convert(&fetch_result.content, url)?;
+
+        // Stage 2: Extract links from ORIGINAL HTML
+        let links = LinkExtractor::extract(&fetch_result.content, url);
+
+        let result = CrawlResult {
+            url: url.to_string(),
+            title: Some(article.title),
+            content: article.content,
+            content_type: fetch_result.content_type,
+            etag: fetch_result.etag,
+            last_modified: fetch_result.last_modified,
+            depth,
+        };
+
+        Ok((result, links))
+    }
+
     /// Process a single page.
     async fn process_page(
         &self,
         url: &str,
         depth: usize,
     ) -> Result<(CrawlResult, Vec<crate::scraper::Link>)> {
-        debug!("Fetching: {}", url);
-        let fetch_result = self.fetcher.fetch(url).await?;
+        debug!("Processing page: {} (mode: {:?})", url, self.config.scrape_mode);
+
+        let fetch_result = match self.config.scrape_mode {
+            ScrapeMode::Fetch => {
+                debug!("Using HTTP fetch for: {}", url);
+                self.fetcher.fetch(url).await?
+            }
+            ScrapeMode::Browser => {
+                debug!("Using browser fetch for: {}", url);
+                let mut browser_fetcher = self.browser_fetcher.lock().await;
+                browser_fetcher.fetch(url).await?
+            }
+        };
 
         debug!("Fetched {}: status={}, content_length={}, content_type={:?}",
                url, fetch_result.status, fetch_result.content.len(), fetch_result.content_type);

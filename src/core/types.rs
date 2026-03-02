@@ -164,6 +164,8 @@ pub struct ScraperOptions {
     pub exclude_patterns: Option<Vec<String>>,
     /// Follow robots.txt rules.
     pub respect_robots_txt: Option<bool>,
+    /// Scrape mode: "fetch" (HTTP only) or "browser" (headless Chrome).
+    pub scrape_mode: Option<String>,
 }
 
 /// Search result with context.
