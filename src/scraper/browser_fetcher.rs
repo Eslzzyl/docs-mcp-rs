@@ -386,6 +386,12 @@ impl BrowserFetcher {
             content.len()
         );
 
+        // 显式关闭标签页，避免内存泄漏
+        // 使用 close(true) 触发 beforeunload 钩子，让页面有更多清理时间
+        if let Err(e) = tab.close(true) {
+            warn!("Failed to close browser tab: {}", e);
+        }
+
         // Build result (browser fetch doesn't have HTTP headers like etag/last_modified)
         Ok(FetchResult {
             url: url.to_string(),
@@ -618,6 +624,8 @@ impl BrowserFetcher {
     pub fn close(&mut self) {
         if self.browser.is_some() {
             info!("Closing browser instance");
+            // 给浏览器一些时间完成内部清理，避免竞争条件警告
+            std::thread::sleep(std::time::Duration::from_millis(500));
             self.browser = None;
         }
     }

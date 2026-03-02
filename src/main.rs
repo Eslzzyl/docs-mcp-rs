@@ -21,11 +21,12 @@ async fn main() {
     // Load .env file if present (ignore errors if file doesn't exist)
     let _ = dotenvy::dotenv();
 
-    // Initialize logging with filter to suppress html5ever warnings
+    // Initialize logging with filter to suppress verbose library logs
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
                 .add_directive("html5ever=error".parse().unwrap())
+                .add_directive("headless_chrome=error".parse().unwrap())
                 .add_directive("info".parse().unwrap()),
         )
         .init();
