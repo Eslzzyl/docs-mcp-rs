@@ -1,0 +1,87 @@
+{
+  "app": {
+    "title": "Docs MCP",
+    "subtitle": "Documentation indexing and search server"
+  },
+  "nav": {
+    "libraries": "Libraries",
+    "jobs": "Jobs",
+    "addLibrary": "Add Library",
+    "search": "Search"
+  },
+  "libraries": {
+    "title": "Indexed Libraries",
+    "refresh": "Refresh",
+    "loading": "Loading...",
+    "empty": "No libraries indexed yet. Add one to get started!",
+    "versionCount": "version(s)",
+    "noVersions": "No versions",
+    "pages": "pages",
+    "deleteLibrary": "Delete Library",
+    "deleteVersion": "Delete"
+  },
+  "jobs": {
+    "title": "Active Jobs",
+    "clearCompleted": "Clear Completed",
+    "empty": "No jobs running",
+    "cancel": "Cancel"
+  },
+  "form": {
+    "url": "Documentation URL",
+    "urlPlaceholder": "https://docs.example.com",
+    "libraryName": "Library Name",
+    "libraryPlaceholder": "my-library",
+    "version": "Version (optional)",
+    "versionPlaceholder": "latest",
+    "maxPages": "Max Pages",
+    "maxDepth": "Max Depth",
+    "scrapeMode": "Scrape Mode",
+    "modeBrowser": "Browser (JavaScript support)",
+    "modeFetch": "Fetch (Fast, static only)",
+    "startScraping": "Start Scraping"
+  },
+  "search": {
+    "title": "Search Documentation",
+    "placeholder": "Enter search query...",
+    "button": "Search",
+    "loadingLibraries": "Loading libraries...",
+    "noLibraries": "No libraries available",
+    "loading": "Searching...",
+    "noResults": "No results found"
+  },
+  "status": {
+    "queued": "queued",
+    "running": "running",
+    "completed": "completed",
+    "failed": "failed",
+    "cancelled": "cancelled"
+  },
+  "progress": {
+    "initializing": "Initializing...",
+    "discovering": "🔍 Discovering pages...",
+    "discoveredInfo": "found",
+    "inQueue": "in queue",
+    "pagesProgress": "pages",
+    "current": "Current",
+    "scanning": "Scanning...",
+    "processing": "Processing..."
+  },
+  "toast": {
+    "jobStarted": "Scraping job started successfully!",
+    "selectLibrary": "Please select a library",
+    "enterQuery": "Please enter a search query",
+    "versionDeleted": "Version deleted",
+    "libraryDeleted": "Library deleted",
+    "jobCancelled": "Job cancelled",
+    "jobsCleared": "Cleared {count} completed job(s)"
+  },
+  "confirm": {
+    "deleteVersion": "Delete {library}@{version}? This cannot be undone.",
+    "deleteLibrary": "Delete library \"{library}\" and ALL its versions? This cannot be undone."
+  },
+  "language": {
+    "select": "Language",
+    "en": "English",
+    "zhCN": "简体中文"
+  }
+}

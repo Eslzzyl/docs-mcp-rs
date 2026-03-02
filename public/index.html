@@ -11,104 +11,180 @@
             <header>
                 <div class="header-content">
                     <div class="header-title">
-                        <h1>Docs MCP</h1>
-                        <p class="subtitle">Documentation indexing and search server</p>
+                        <h1 data-i18n="app.title">Docs MCP</h1>
+                        <p class="subtitle" data-i18n="app.subtitle">
+                            Documentation indexing and search server
+                        </p>
                     </div>
-                    <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">
-                        <svg class="sun-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="5"></circle>
-                            <line x1="12" y1="1" x2="12" y2="3"></line>
-                            <line x1="12" y1="21" x2="12" y2="23"></line>
-                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-                            <line x1="1" y1="12" x2="3" y2="12"></line>
-                            <line x1="21" y1="12" x2="23" y2="12"></line>
-                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-                        </svg>
-                        <svg class="moon-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-                        </svg>
-                    </button>
+                    <div class="header-controls">
+                        <select
+                            id="language-select"
+                            class="language-select"
+                            aria-label="Select language"
+                        >
+                            <option value="en">English</option>
+                            <option value="zh-CN">简体中文</option>
+                        </select>
+                        <button
+                            id="theme-toggle"
+                            class="theme-toggle"
+                            aria-label="Toggle theme"
+                        >
+                            <svg
+                                class="sun-icon"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                            >
+                                <circle cx="12" cy="12" r="5"></circle>
+                                <line x1="12" y1="1" x2="12" y2="3"></line>
+                                <line x1="12" y1="21" x2="12" y2="23"></line>
+                                <line
+                                    x1="4.22"
+                                    y1="4.22"
+                                    x2="5.64"
+                                    y2="5.64"
+                                ></line>
+                                <line
+                                    x1="18.36"
+                                    y1="18.36"
+                                    x2="19.78"
+                                    y2="19.78"
+                                ></line>
+                                <line x1="1" y1="12" x2="3" y2="12"></line>
+                                <line x1="21" y1="12" x2="23" y2="12"></line>
+                                <line
+                                    x1="4.22"
+                                    y1="19.78"
+                                    x2="5.64"
+                                    y2="18.36"
+                                ></line>
+                                <line
+                                    x1="18.36"
+                                    y1="5.64"
+                                    x2="19.78"
+                                    y2="4.22"
+                                ></line>
+                            </svg>
+                            <svg
+                                class="moon-icon"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                            >
+                                <path
+                                    d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"
+                                ></path>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
             </header>
 
             <main>
                 <!-- Page Navigation -->
                 <nav class="page-nav">
-                    <a href="#libraries-section">Libraries</a>
-                    <a href="#jobs-section">Jobs</a>
-                    <a href="#scrape-section">Add Library</a>
-                    <a href="#search-section">Search</a>
+                    <a href="#libraries-section" data-i18n="nav.libraries"
+                        >Libraries</a
+                    >
+                    <a href="#jobs-section" data-i18n="nav.jobs">Jobs</a>
+                    <a href="#scrape-section" data-i18n="nav.addLibrary"
+                        >Add Library</a
+                    >
+                    <a href="#search-section" data-i18n="nav.search">Search</a>
                 </nav>
 
                 <!-- Libraries Section -->
                 <section id="libraries-section" class="content-section">
                     <div class="section-header">
-                        <h2>Indexed Libraries</h2>
+                        <h2 data-i18n="libraries.title">Indexed Libraries</h2>
                         <button
                             class="btn btn-secondary"
                             id="refresh-libraries"
+                            data-i18n="libraries.refresh"
                         >
                             Refresh
                         </button>
                     </div>
                     <div id="libraries-list" class="card-list">
-                        <p class="loading">Loading...</p>
+                        <p class="loading" data-i18n="libraries.loading">
+                            Loading...
+                        </p>
                     </div>
                 </section>
 
                 <!-- Jobs Section -->
                 <section id="jobs-section" class="content-section">
                     <div class="section-header">
-                        <h2>Active Jobs</h2>
-                        <button class="btn btn-secondary" id="clear-jobs">
+                        <h2 data-i18n="jobs.title">Active Jobs</h2>
+                        <button
+                            class="btn btn-secondary"
+                            id="clear-jobs"
+                            data-i18n="jobs.clearCompleted"
+                        >
                             Clear Completed
                         </button>
                     </div>
                     <div id="jobs-list" class="card-list">
-                        <p class="loading">No jobs running</p>
+                        <p class="loading" data-i18n="jobs.empty">
+                            No jobs running
+                        </p>
                     </div>
                 </section>
 
                 <!-- Add Library Section -->
                 <section id="scrape-section" class="content-section">
-                    <h2>Add New Library</h2>
+                    <h2 data-i18n="nav.addLibrary">Add New Library</h2>
                     <form id="scrape-form" class="form">
                         <div class="form-group">
-                            <label for="url">Documentation URL</label>
+                            <label for="url" data-i18n="form.url"
+                                >Documentation URL</label
+                            >
                             <input
                                 type="url"
                                 id="url"
                                 name="url"
+                                data-i18n-placeholder="form.urlPlaceholder"
                                 placeholder="https://docs.example.com"
                                 required
                             />
                         </div>
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="library">Library Name</label>
+                                <label
+                                    for="library"
+                                    data-i18n="form.libraryName"
+                                    >Library Name</label
+                                >
                                 <input
                                     type="text"
                                     id="library"
                                     name="library"
+                                    data-i18n-placeholder="form.libraryPlaceholder"
                                     placeholder="my-library"
                                     required
                                 />
                             </div>
                             <div class="form-group">
-                                <label for="version">Version (optional)</label>
+                                <label for="version" data-i18n="form.version"
+                                    >Version (optional)</label
+                                >
                                 <input
                                     type="text"
                                     id="version"
                                     name="version"
+                                    data-i18n-placeholder="form.versionPlaceholder"
                                     placeholder="latest"
                                 />
                             </div>
                         </div>
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="max-pages">Max Pages</label>
+                                <label for="max-pages" data-i18n="form.maxPages"
+                                    >Max Pages</label
+                                >
                                 <input
                                     type="number"
                                     id="max-pages"
@@ -118,7 +194,9 @@
                                 />
                             </div>
                             <div class="form-group">
-                                <label for="max-depth">Max Depth</label>
+                                <label for="max-depth" data-i18n="form.maxDepth"
+                                    >Max Depth</label
+                                >
                                 <input
                                     type="number"
                                     id="max-depth"
@@ -130,15 +208,34 @@
                         </div>
                         <div class="form-row">
                             <div class="form-group">
-                                <label for="scrape-mode">Scrape Mode</label>
+                                <label
+                                    for="scrape-mode"
+                                    data-i18n="form.scrapeMode"
+                                    >Scrape Mode</label
+                                >
                                 <select id="scrape-mode" name="scrape_mode">
-                                    <option value="browser" selected>Browser (JavaScript support)</option>
-                                    <option value="fetch">Fetch (Fast, static only)</option>
+                                    <option
+                                        value="browser"
+                                        selected
+                                        data-i18n="form.modeBrowser"
+                                    >
+                                        Browser (JavaScript support)
+                                    </option>
+                                    <option
+                                        value="fetch"
+                                        data-i18n="form.modeFetch"
+                                    >
+                                        Fetch (Fast, static only)
+                                    </option>
                                 </select>
                             </div>
                         </div>
                         <div class="form-actions">
-                            <button type="submit" class="btn btn-primary">
+                            <button
+                                type="submit"
+                                class="btn btn-primary"
+                                data-i18n="form.startScraping"
+                            >
                                 Start Scraping
                             </button>
                         </div>
@@ -147,17 +244,27 @@
 
                 <!-- Search Section -->
                 <section id="search-section" class="content-section">
-                    <h2>Search Documentation</h2>
+                    <h2 data-i18n="search.title">Search Documentation</h2>
                     <div class="search-box">
                         <select id="search-library">
-                            <option value="">Loading libraries...</option>
+                            <option
+                                value=""
+                                data-i18n="search.loadingLibraries"
+                            >
+                                Loading libraries...
+                            </option>
                         </select>
                         <input
                             type="text"
                             id="search-query"
+                            data-i18n-placeholder="search.placeholder"
                             placeholder="Enter search query..."
                         />
-                        <button class="btn btn-primary" id="search-btn">
+                        <button
+                            class="btn btn-primary"
+                            id="search-btn"
+                            data-i18n="search.button"
+                        >
                             Search
                         </button>
                     </div>

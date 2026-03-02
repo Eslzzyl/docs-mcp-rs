@@ -1,0 +1,87 @@
+{
+  "app": {
+    "title": "Docs MCP",
+    "subtitle": "文档索引与搜索服务器"
+  },
+  "nav": {
+    "libraries": "文档库",
+    "jobs": "任务",
+    "addLibrary": "添加文档库",
+    "search": "搜索"
+  },
+  "libraries": {
+    "title": "已索引的文档库",
+    "refresh": "刷新",
+    "loading": "加载中...",
+    "empty": "还没有索引的文档库，添加一个开始使用！",
+    "versionCount": "个版本",
+    "noVersions": "无版本",
+    "pages": "页",
+    "deleteLibrary": "删除文档库",
+    "deleteVersion": "删除"
+  },
+  "jobs": {
+    "title": "活跃任务",
+    "clearCompleted": "清除已完成",
+    "empty": "没有正在运行的任务",
+    "cancel": "取消"
+  },
+  "form": {
+    "url": "文档 URL",
+    "urlPlaceholder": "https://docs.example.com",
+    "libraryName": "文档库名称",
+    "libraryPlaceholder": "my-library",
+    "version": "版本（可选）",
+    "versionPlaceholder": "latest",
+    "maxPages": "最大页数",
+    "maxDepth": "最大深度",
+    "scrapeMode": "爬取模式",
+    "modeBrowser": "浏览器（支持 JavaScript）",
+    "modeFetch": "直接获取（快速，仅静态）",
+    "startScraping": "开始爬取"
+  },
+  "search": {
+    "title": "搜索文档",
+    "placeholder": "输入搜索关键词...",
+    "button": "搜索",
+    "loadingLibraries": "加载文档库...",
+    "noLibraries": "无可用文档库",
+    "loading": "搜索中...",
+    "noResults": "未找到结果"
+  },
+  "status": {
+    "queued": "排队中",
+    "running": "运行中",
+    "completed": "已完成",
+    "failed": "失败",
+    "cancelled": "已取消"
+  },
+  "progress": {
+    "initializing": "初始化中...",
+    "discovering": "🔍 发现页面中...",
+    "discoveredInfo": "已发现",
+    "inQueue": "队列中",
+    "pagesProgress": "页",
+    "current": "当前",
+    "scanning": "扫描中...",
+    "processing": "处理中..."
+  },
+  "toast": {
+    "jobStarted": "爬取任务已成功启动！",
+    "selectLibrary": "请选择一个文档库",
+    "enterQuery": "请输入搜索关键词",
+    "versionDeleted": "版本已删除",
+    "libraryDeleted": "文档库已删除",
+    "jobCancelled": "任务已取消",
+    "jobsCleared": "已清除 {count} 个已完成任务"
+  },
+  "confirm": {
+    "deleteVersion": "删除 {library}@{version}？此操作不可撤销。",
+    "deleteLibrary": "删除文档库 \"{library}\" 及其所有版本？此操作不可撤销。"
+  },
+  "language": {
+    "select": "语言",
+    "en": "English",
+    "zhCN": "简体中文"
+  }
+}

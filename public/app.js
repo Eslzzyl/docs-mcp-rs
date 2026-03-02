@@ -5,6 +5,8 @@ const API_BASE = "/api";
 
 // State
 let eventSource = null;
+let currentLang = "en";
+let translations = {};
 
 // DOM Elements
 const elements = {
@@ -18,7 +20,7 @@ const elements = {
 };
 
 // Initialize
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   // Cache DOM elements
   elements.librariesList = document.getElementById("libraries-list");
   elements.jobsList = document.getElementById("jobs-list");
@@ -27,6 +29,9 @@ document.addEventListener("DOMContentLoaded", () => {
   elements.searchResults = document.getElementById("search-results");
   elements.scrapeForm = document.getElementById("scrape-form");
   elements.toast = document.getElementById("toast");
+
+  // Initialize i18n first
+  await initI18n();
 
   // Initialize theme
   initTheme();
@@ -41,6 +46,107 @@ document.addEventListener("DOMContentLoaded", () => {
   // Connect to SSE
   connectSSE();
 });
+
+// i18n Management
+async function initI18n() {
+  // 1. Check saved language preference
+  const savedLang = localStorage.getItem("language");
+
+  // 2. If no saved preference, detect browser language
+  if (savedLang) {
+    currentLang = savedLang;
+  } else {
+    currentLang = detectLanguage();
+  }
+
+  // 3. Load translations and apply
+  await loadTranslations(currentLang);
+  updatePageLanguage();
+}
+
+function detectLanguage() {
+  const browserLang = navigator.language || navigator.userLanguage;
+  // If Chinese (zh), use Simplified Chinese
+  if (browserLang.startsWith("zh")) {
+    return "zh-CN";
+  }
+  return "en";
+}
+
+async function loadTranslations(lang) {
+  try {
+    const response = await fetch(`/lang/${lang}.json`);
+    if (!response.ok) {
+      throw new Error(`Failed to load translations for ${lang}`);
+    }
+    translations = await response.json();
+  } catch (error) {
+    console.error("Failed to load translations:", error);
+    translations = {};
+  }
+}
+
+function t(key, params = {}) {
+  const keys = key.split(".");
+  let value = translations;
+
+  for (const k of keys) {
+    if (value && typeof value === "object" && k in value) {
+      value = value[k];
+    } else {
+      return key; // Return key if translation not found
+    }
+  }
+
+  // Replace parameters
+  if (typeof value === "string") {
+    return value.replace(/\{(\w+)\}/g, (match, paramKey) => {
+      return params[paramKey] !== undefined ? params[paramKey] : match;
+    });
+  }
+
+  return key;
+}
+
+function updatePageLanguage() {
+  // Update html lang attribute
+  document.documentElement.lang = currentLang;
+
+  // Update all elements with data-i18n attribute
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const key = el.getAttribute("data-i18n");
+    const translated = t(key);
+    if (translated !== key) {
+      el.textContent = translated;
+    }
+  });
+
+  // Update placeholders
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+    const key = el.getAttribute("data-i18n-placeholder");
+    const translated = t(key);
+    if (translated !== key) {
+      el.placeholder = translated;
+    }
+  });
+
+  // Update language selector
+  const langSelect = document.getElementById("language-select");
+  if (langSelect) {
+    langSelect.value = currentLang;
+  }
+}
+
+async function setLanguage(lang) {
+  currentLang = lang;
+  localStorage.setItem("language", lang);
+  await loadTranslations(lang);
+  updatePageLanguage();
+
+  // Reload dynamic content to reflect language change
+  loadLibraries();
+  loadJobs();
+}
 
 // Theme Management
 function initTheme() {
@@ -96,6 +202,14 @@ function setupEventListeners() {
   if (themeToggle) {
     themeToggle.addEventListener("click", toggleTheme);
   }
+
+  // Language selector
+  const langSelect = document.getElementById("language-select");
+  if (langSelect) {
+    langSelect.addEventListener("change", (e) => {
+      setLanguage(e.target.value);
+    });
+  }
 }
 
 // API Functions
@@ -114,11 +228,13 @@ async function fetchAPI(endpoint, options = {}) {
     }
 
     const url = `${API_BASE}${endpoint}`;
-    console.log(`[API] ${options.method || 'GET'} ${url}`, fetchOptions);
+    console.log(`[API] ${options.method || "GET"} ${url}`, fetchOptions);
 
     const response = await fetch(url, fetchOptions);
 
-    console.log(`[API] Response status: ${response.status} ${response.statusText}`);
+    console.log(
+      `[API] Response status: ${response.status} ${response.statusText}`,
+    );
     console.log(`[API] Response headers:`, [...response.headers.entries()]);
 
     // Get response text first to check if it's empty
@@ -142,7 +258,10 @@ async function fetchAPI(endpoint, options = {}) {
       return { success: true };
     }
 
-    return { success: false, error: `HTTP ${response.status}: ${response.statusText}` };
+    return {
+      success: false,
+      error: `HTTP ${response.status}: ${response.statusText}`,
+    };
   } catch (error) {
     console.error("[API] Error:", error);
     return { success: false, error: error.message };
@@ -151,7 +270,7 @@ async function fetchAPI(endpoint, options = {}) {
 
 // Load Libraries
 async function loadLibraries() {
-  elements.librariesList.innerHTML = '<p class="loading">Loading...</p>';
+  elements.librariesList.innerHTML = `<p class="loading">${t("libraries.loading")}</p>`;
 
   const result = await fetchAPI("/libraries");
 
@@ -161,8 +280,7 @@ async function loadLibraries() {
   }
 
   if (!result.data || result.data.length === 0) {
-    elements.librariesList.innerHTML =
-      '<p class="empty-state">No libraries indexed yet. Add one to get started!</p>';
+    elements.librariesList.innerHTML = `<p class="empty-state">${t("libraries.empty")}</p>`;
     updateSearchLibrarySelect([]);
     return;
   }
@@ -178,30 +296,28 @@ function renderLibraryCard(lib) {
   const versionsHtml =
     lib.versions.length > 0
       ? lib.versions
-          .map(
-            (v) => {
-              const versionName = v.name || "";
-              const displayName = versionName || "latest";
-              return `
+          .map((v) => {
+            const versionName = v.name || "";
+            const displayName = versionName || "latest";
+            return `
             <div class="version-item">
                 <span class="status ${v.status}"></span>
                 <span>${displayName}</span>
-                <span class="card-meta">${v.page_count} pages</span>
-                <button class="btn btn-danger btn-sm" onclick="deleteVersion('${lib.name}', '${versionName}')">Delete</button>
+                <span class="card-meta">${v.page_count} ${t("libraries.pages")}</span>
+                <button class="btn btn-danger btn-sm" onclick="deleteVersion('${lib.name}', '${versionName}')">${t("libraries.deleteVersion")}</button>
             </div>
         `;
-            },
-          )
+          })
           .join("")
-      : '<span class="card-meta">No versions</span>';
+      : `<span class="card-meta">${t("libraries.noVersions")}</span>`;
 
   return `
         <div class="card">
             <div class="card-header">
                 <span class="card-title">${lib.name}</span>
                 <div class="card-actions">
-                    <span class="card-meta">${lib.versions.length} version(s)</span>
-                    <button class="btn btn-danger btn-sm" onclick="deleteLibrary('${lib.name}')">Delete Library</button>
+                    <span class="card-meta">${lib.versions.length} ${t("libraries.versionCount")}</span>
+                    <button class="btn btn-danger btn-sm" onclick="deleteLibrary('${lib.name}')">${t("libraries.deleteLibrary")}</button>
                 </div>
             </div>
             <div class="card-body">
@@ -218,7 +334,7 @@ function updateSearchLibrarySelect(libraries) {
   if (libraries.length === 0) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "No libraries available";
+    option.textContent = t("search.noLibraries");
     elements.searchLibrary.appendChild(option);
     return;
   }
@@ -244,7 +360,7 @@ async function loadJobs() {
   }
 
   if (!result.data || result.data.length === 0) {
-    elements.jobsList.innerHTML = '<p class="empty-state">No jobs running</p>';
+    elements.jobsList.innerHTML = `<p class="empty-state">${t("jobs.empty")}</p>`;
     return;
   }
 
@@ -267,18 +383,18 @@ function renderProgressHtml(status, progress) {
         <div class="progress-bar indeterminate">
           <div class="progress-fill"></div>
         </div>
-        <p class="card-meta progress-text">Initializing...</p>
+        <p class="card-meta progress-text">${t("progress.initializing")}</p>
       </div>
     `;
   }
 
   const phase = progress.phase || "discovering";
   const isDiscovering = phase === "discovering" || progress.is_discovering;
-  
+
   // Calculate progress percentage
   let progressPercent = 0;
   let progressText = "";
-  
+
   if (isDiscovering) {
     // During discovery phase, show indeterminate progress
     return `
@@ -286,8 +402,8 @@ function renderProgressHtml(status, progress) {
         <div class="progress-bar indeterminate">
           <div class="progress-fill"></div>
         </div>
-        <p class="card-meta progress-text">🔍 Discovering pages... (${progress.total_discovered} found, ${progress.queue_length} in queue)</p>
-        <p class="card-meta current-url">Current: ${progress.current_url || "Scanning..."}</p>
+        <p class="card-meta progress-text">${t("progress.discovering")} (${progress.total_discovered} ${t("progress.discoveredInfo")}, ${progress.queue_length} ${t("progress.inQueue")})</p>
+        <p class="card-meta current-url">${t("progress.current")}: ${progress.current_url || t("progress.scanning")}</p>
       </div>
     `;
   } else {
@@ -295,15 +411,15 @@ function renderProgressHtml(status, progress) {
     const total = progress.total_pages || 1;
     const scraped = progress.pages_scraped || 0;
     progressPercent = Math.round((scraped / total) * 100);
-    progressText = `${scraped}/${total} pages (${progressPercent}%)`;
-    
+    progressText = `${scraped}/${total} ${t("progress.pagesProgress")} (${progressPercent}%)`;
+
     return `
       <div class="progress-container">
         <div class="progress-bar">
           <div class="progress-fill" style="width: ${progressPercent}%"></div>
         </div>
         <p class="card-meta progress-text">📄 ${progressText}</p>
-        <p class="card-meta current-url">Current: ${progress.current_url || "Processing..."}</p>
+        <p class="card-meta current-url">${t("progress.current")}: ${progress.current_url || t("progress.processing")}</p>
       </div>
     `;
   }
@@ -316,14 +432,14 @@ function renderJobCard(job) {
 
   const cancelBtn =
     job.status === "running" || job.status === "queued"
-      ? `<button class="btn btn-danger btn-sm" onclick="cancelJob('${job.id}')">Cancel</button>`
+      ? `<button class="btn btn-danger btn-sm" onclick="cancelJob('${job.id}')">${t("jobs.cancel")}</button>`
       : "";
 
   return `
         <div class="card" data-job-id="${job.id}">
             <div class="card-header">
                 <span class="card-title">${job.library}${job.version ? "@" + job.version : ""}</span>
-                <span class="job-status ${job.status}">${job.status}</span>
+                <span class="job-status ${job.status}">${t(`status.${job.status}`)}</span>
             </div>
             <div class="card-body">
                 <p class="card-meta">${job.source_url || "No URL"}</p>
@@ -355,11 +471,13 @@ async function handleScrapeSubmit(e) {
   });
 
   if (result.success) {
-    showToast("Scraping job started successfully!", "success");
+    showToast(t("toast.jobStarted"), "success");
     e.target.reset();
 
     // Scroll to jobs section and refresh
-    document.getElementById("jobs-section").scrollIntoView({ behavior: "smooth" });
+    document
+      .getElementById("jobs-section")
+      .scrollIntoView({ behavior: "smooth" });
     loadJobs();
   } else {
     showToast(`Error: ${result.error}`, "error");
@@ -372,16 +490,16 @@ async function handleSearch() {
   const query = elements.searchQuery.value.trim();
 
   if (!library) {
-    showToast("Please select a library", "error");
+    showToast(t("toast.selectLibrary"), "error");
     return;
   }
 
   if (!query) {
-    showToast("Please enter a search query", "error");
+    showToast(t("toast.enterQuery"), "error");
     return;
   }
 
-  elements.searchResults.innerHTML = '<p class="loading">Searching...</p>';
+  elements.searchResults.innerHTML = `<p class="loading">${t("search.loading")}</p>`;
 
   const result = await fetchAPI(
     `/libraries/${encodeURIComponent(library)}/search?q=${encodeURIComponent(query)}&limit=5`,
@@ -393,8 +511,7 @@ async function handleSearch() {
   }
 
   if (!result.data || result.data.length === 0) {
-    elements.searchResults.innerHTML =
-      '<p class="empty-state">No results found</p>';
+    elements.searchResults.innerHTML = `<p class="empty-state">${t("search.noResults")}</p>`;
     return;
   }
 
@@ -429,7 +546,11 @@ async function deleteVersion(library, version) {
   console.log(`[deleteVersion] Starting deletion for ${library}@${version}`);
 
   const displayVersion = version || "latest";
-  if (!confirm(`Delete ${library}@${displayVersion}? This cannot be undone.`)) {
+  const confirmMessage = t("confirm.deleteVersion", {
+    library,
+    version: displayVersion,
+  });
+  if (!confirm(confirmMessage)) {
     console.log(`[deleteVersion] Cancelled by user`);
     return;
   }
@@ -440,8 +561,12 @@ async function deleteVersion(library, version) {
   const encodedVersion = encodeURIComponent(versionParam);
   const endpoint = `/libraries/${encodedLibrary}/versions/${encodedVersion}`;
 
-  console.log(`[deleteVersion] Library: "${library}" -> encoded: "${encodedLibrary}"`);
-  console.log(`[deleteVersion] Version: "${version}" -> param: "${versionParam}" -> encoded: "${encodedVersion}"`);
+  console.log(
+    `[deleteVersion] Library: "${library}" -> encoded: "${encodedLibrary}"`,
+  );
+  console.log(
+    `[deleteVersion] Version: "${version}" -> param: "${versionParam}" -> encoded: "${encodedVersion}"`,
+  );
   console.log(`[deleteVersion] Full endpoint: ${endpoint}`);
 
   const result = await fetchAPI(endpoint, {
@@ -451,7 +576,7 @@ async function deleteVersion(library, version) {
   console.log(`[deleteVersion] Result:`, result);
 
   if (result.success) {
-    showToast("Version deleted", "success");
+    showToast(t("toast.versionDeleted"), "success");
     loadLibraries();
   } else {
     showToast(`Error: ${result.error}`, "error");
@@ -462,7 +587,8 @@ async function deleteVersion(library, version) {
 async function deleteLibrary(library) {
   console.log(`[deleteLibrary] Starting deletion for ${library}`);
 
-  if (!confirm(`Delete library "${library}" and ALL its versions? This cannot be undone.`)) {
+  const confirmMessage = t("confirm.deleteLibrary", { library });
+  if (!confirm(confirmMessage)) {
     console.log(`[deleteLibrary] Cancelled by user`);
     return;
   }
@@ -470,7 +596,9 @@ async function deleteLibrary(library) {
   const encodedLibrary = encodeURIComponent(library);
   const endpoint = `/libraries/${encodedLibrary}`;
 
-  console.log(`[deleteLibrary] Library: "${library}" -> encoded: "${encodedLibrary}"`);
+  console.log(
+    `[deleteLibrary] Library: "${library}" -> encoded: "${encodedLibrary}"`,
+  );
   console.log(`[deleteLibrary] Full endpoint: ${endpoint}`);
 
   const result = await fetchAPI(endpoint, {
@@ -480,7 +608,7 @@ async function deleteLibrary(library) {
   console.log(`[deleteLibrary] Result:`, result);
 
   if (result.success) {
-    showToast("Library deleted", "success");
+    showToast(t("toast.libraryDeleted"), "success");
     loadLibraries();
   } else {
     showToast(`Error: ${result.error}`, "error");
@@ -494,7 +622,7 @@ async function cancelJob(jobId) {
   });
 
   if (result.success) {
-    showToast("Job cancelled", "info");
+    showToast(t("toast.jobCancelled"), "info");
     loadJobs();
   } else {
     showToast(`Error: ${result.error}`, "error");
@@ -508,7 +636,7 @@ async function clearJobs() {
   });
 
   if (result.success) {
-    showToast(`Cleared ${result.data} completed job(s)`, "info");
+    showToast(t("toast.jobsCleared", { count: result.data }), "info");
     loadJobs();
   } else {
     showToast(`Error: ${result.error}`, "error");
@@ -585,7 +713,7 @@ function updateJobProgress(job, progress) {
   const statusEl = card.querySelector(".job-status");
   if (statusEl) {
     statusEl.className = `job-status ${job.status}`;
-    statusEl.textContent = job.status;
+    statusEl.textContent = t(`status.${job.status}`);
   }
 
   // Skip if no progress
@@ -610,8 +738,8 @@ function updateJobProgress(job, progress) {
       <div class="progress-bar indeterminate">
         <div class="progress-fill"></div>
       </div>
-      <p class="card-meta progress-text">🔍 Discovering pages... (${progress.total_discovered} found, ${progress.queue_length} in queue)</p>
-      <p class="card-meta current-url">Current: ${progress.current_url || "Scanning..."}</p>
+      <p class="card-meta progress-text">${t("progress.discovering")} (${progress.total_discovered} ${t("progress.discoveredInfo")}, ${progress.queue_length} ${t("progress.inQueue")})</p>
+      <p class="card-meta current-url">${t("progress.current")}: ${progress.current_url || t("progress.scanning")}</p>
     `;
   } else {
     // Scraping phase - show actual progress
@@ -623,8 +751,8 @@ function updateJobProgress(job, progress) {
       <div class="progress-bar">
         <div class="progress-fill" style="width: ${percent}%"></div>
       </div>
-      <p class="card-meta progress-text">📄 ${scraped}/${total} pages (${percent}%)</p>
-      <p class="card-meta current-url">Current: ${progress.current_url || "Processing..."}</p>
+      <p class="card-meta progress-text">📄 ${scraped}/${total} ${t("progress.pagesProgress")} (${percent}%)</p>
+      <p class="card-meta current-url">${t("progress.current")}: ${progress.current_url || t("progress.processing")}</p>
     `;
   }
 }

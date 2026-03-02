@@ -112,6 +112,43 @@ header h1 {
     margin: 0;
 }
 
+/* Header Controls */
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+/* Language Selector */
+.language-select {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.5rem;
+    color: var(--text);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    height: 36px;
+}
+
+.language-select:hover {
+    background: var(--bg-input);
+    border-color: var(--primary);
+}
+
+.language-select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.language-select option {
+    background: var(--bg-card);
+    color: var(--text);
+}
+
 /* Theme Toggle */
 .theme-toggle {
     background: var(--bg-card);
@@ -660,7 +697,7 @@ html {
         order: 2;
     }
 
-    .theme-toggle {
+    .header-controls {
         order: 1;
         align-self: flex-end;
     }
