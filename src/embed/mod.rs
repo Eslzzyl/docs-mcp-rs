@@ -47,8 +47,15 @@ pub trait Embedder: Send + Sync {
 /// all embedding requests are serialized, preventing concurrent API calls
 /// that could trigger rate limiting.
 pub fn create_embedder(config: &EmbeddingConfig) -> Result<Box<dyn Embedder>> {
-    // Create rate limiter if limits are configured
-    let rate_limiter = if config.max_rpm > 0 && config.max_tpm > 0 {
+    // Check if rate limiting is enabled via environment variable
+    // Default to true if not set
+    let rate_limit_enabled = std::env::var("DOCS_MCP_EMBEDDING_RATE_LIMIT")
+        .ok()
+        .map(|v| v.to_lowercase() != "false")
+        .unwrap_or(true);
+
+    // Create rate limiter if enabled and limits are configured
+    let rate_limiter = if rate_limit_enabled && config.max_rpm > 0 && config.max_tpm > 0 {
         Some(create_rate_limiter(
             config.max_rpm,
             config.max_tpm,
