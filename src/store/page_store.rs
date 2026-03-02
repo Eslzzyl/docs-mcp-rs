@@ -19,8 +19,9 @@ impl<'a> PageStore<'a> {
     pub fn upsert(&self, page: &NewPage) -> Result<Page> {
         let now = Utc::now().to_rfc3339();
 
-        self.conn.with_transaction(|tx| {
-            tx.execute(
+        self.conn.with_connection(|conn| {
+            // Use RETURNING clause to get the correct ID for both INSERT and UPDATE cases
+            let id: i64 = conn.query_row(
                 "INSERT INTO pages (version_id, url, title, etag, last_modified, content_type, depth, created_at, updated_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
                  ON CONFLICT(version_id, url) DO UPDATE SET
@@ -29,7 +30,8 @@ impl<'a> PageStore<'a> {
                     last_modified = excluded.last_modified,
                     content_type = excluded.content_type,
                     depth = excluded.depth,
-                    updated_at = excluded.updated_at",
+                    updated_at = excluded.updated_at
+                 RETURNING id",
                 rusqlite::params![
                     page.version_id,
                     page.url,
@@ -40,9 +42,8 @@ impl<'a> PageStore<'a> {
                     page.depth,
                     now,
                 ],
+                |row| row.get(0),
             )?;
-
-            let id = tx.last_insert_rowid();
 
             Ok(Page {
                 id,
