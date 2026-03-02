@@ -34,17 +34,16 @@
             </header>
 
             <main>
-                <!-- Tabs -->
-                <div class="tabs">
-                    <button class="tab active" data-tab="libraries">
-                        Libraries
-                    </button>
-                    <button class="tab" data-tab="jobs">Jobs</button>
-                    <button class="tab" data-tab="scrape">Add Library</button>
-                </div>
+                <!-- Page Navigation -->
+                <nav class="page-nav">
+                    <a href="#libraries-section">Libraries</a>
+                    <a href="#jobs-section">Jobs</a>
+                    <a href="#scrape-section">Add Library</a>
+                    <a href="#search-section">Search</a>
+                </nav>
 
-                <!-- Libraries Tab -->
-                <section id="libraries-tab" class="tab-content active">
+                <!-- Libraries Section -->
+                <section id="libraries-section" class="content-section">
                     <div class="section-header">
                         <h2>Indexed Libraries</h2>
                         <button
@@ -59,8 +58,8 @@
                     </div>
                 </section>
 
-                <!-- Jobs Tab -->
-                <section id="jobs-tab" class="tab-content">
+                <!-- Jobs Section -->
+                <section id="jobs-section" class="content-section">
                     <div class="section-header">
                         <h2>Active Jobs</h2>
                         <button class="btn btn-secondary" id="clear-jobs">
@@ -72,8 +71,8 @@
                     </div>
                 </section>
 
-                <!-- Scrape Tab -->
-                <section id="scrape-tab" class="tab-content">
+                <!-- Add Library Section -->
+                <section id="scrape-section" class="content-section">
                     <h2>Add New Library</h2>
                     <form id="scrape-form" class="form">
                         <div class="form-group">
@@ -147,11 +146,11 @@
                 </section>
 
                 <!-- Search Section -->
-                <section class="search-section">
+                <section id="search-section" class="content-section">
                     <h2>Search Documentation</h2>
                     <div class="search-box">
                         <select id="search-library">
-                            <option value="">Select library...</option>
+                            <option value="">Loading libraries...</option>
                         </select>
                         <input
                             type="text"

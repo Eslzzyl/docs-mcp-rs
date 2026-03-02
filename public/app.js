@@ -31,9 +31,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // Initialize theme
   initTheme();
 
-  // Setup tab navigation
-  setupTabs();
-
   // Setup event listeners
   setupEventListeners();
 
@@ -73,25 +70,6 @@ function toggleTheme() {
 
   document.documentElement.setAttribute("data-theme", newTheme);
   localStorage.setItem("theme", newTheme);
-}
-
-// Tab Navigation
-function setupTabs() {
-  const tabs = document.querySelectorAll(".tab");
-  tabs.forEach((tab) => {
-    tab.addEventListener("click", () => {
-      // Update active tab
-      tabs.forEach((t) => t.classList.remove("active"));
-      tab.classList.add("active");
-
-      // Update active content
-      const tabId = tab.dataset.tab;
-      document.querySelectorAll(".tab-content").forEach((content) => {
-        content.classList.remove("active");
-      });
-      document.getElementById(`${tabId}-tab`).classList.add("active");
-    });
-  });
 }
 
 // Event Listeners
@@ -235,14 +213,25 @@ function renderLibraryCard(lib) {
 
 // Update Search Library Select
 function updateSearchLibrarySelect(libraries) {
-  elements.searchLibrary.innerHTML =
-    '<option value="">Select library...</option>';
+  elements.searchLibrary.innerHTML = "";
+
+  if (libraries.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No libraries available";
+    elements.searchLibrary.appendChild(option);
+    return;
+  }
+
   libraries.forEach((lib) => {
     const option = document.createElement("option");
     option.value = lib.name;
     option.textContent = lib.name;
     elements.searchLibrary.appendChild(option);
   });
+
+  // Auto-select the first library
+  elements.searchLibrary.selectedIndex = 0;
 }
 
 // Load Jobs
@@ -369,8 +358,8 @@ async function handleScrapeSubmit(e) {
     showToast("Scraping job started successfully!", "success");
     e.target.reset();
 
-    // Switch to jobs tab
-    document.querySelector('[data-tab="jobs"]').click();
+    // Scroll to jobs section and refresh
+    document.getElementById("jobs-section").scrollIntoView({ behavior: "smooth" });
     loadJobs();
   } else {
     showToast(`Error: ${result.error}`, "error");

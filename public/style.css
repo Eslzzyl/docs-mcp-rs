@@ -77,8 +77,8 @@ body {
 
 /* Header */
 header {
-    margin-bottom: 2rem;
-    padding-bottom: 1.5rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
     border-bottom: 1px solid var(--border);
 }
 
@@ -90,27 +90,31 @@ header {
 }
 
 .header-title {
-    text-align: center;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
     flex: 1;
 }
 
 header h1 {
-    font-size: 2.5rem;
-    font-weight: 700;
+    font-size: 1.5rem;
+    font-weight: 600;
     background: linear-gradient(135deg, var(--primary), #8b5cf6);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+    margin: 0;
 }
 
 .subtitle {
     color: var(--text-muted);
-    margin-top: 0.5rem;
+    font-size: 0.875rem;
+    margin: 0;
 }
 
 /* Theme Toggle */
 .theme-toggle {
-    background: var(--bg-input);
+    background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 0.5rem;
@@ -120,13 +124,14 @@ header h1 {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
 }
 
 .theme-toggle:hover {
-    background: var(--border);
-    transform: scale(1.05);
+    background: var(--bg-input);
+    border-color: var(--primary);
 }
 
 .theme-toggle svg {
@@ -134,6 +139,7 @@ header h1 {
     height: 20px;
 }
 
+/* Default: show moon icon (for dark mode) */
 .sun-icon {
     display: none;
 }
@@ -142,68 +148,76 @@ header h1 {
     display: block;
 }
 
-/* Show sun icon in dark mode, moon icon in light mode */
-:root[data-theme="light"] .sun-icon,
-@media (prefers-color-scheme: light) {
-    :root:not([data-theme="dark"]) .sun-icon {
-        display: block;
-    }
-
-    :root:not([data-theme="dark"]) .moon-icon {
-        display: none;
-    }
+/* Light mode: show sun icon */
+:root[data-theme="light"] .sun-icon {
+    display: block;
 }
 
 :root[data-theme="light"] .moon-icon {
     display: none;
 }
 
-:root[data-theme="dark"] .sun-icon {
-    display: block;
+/* Auto-detect light mode (no data-theme set) */
+@media (prefers-color-scheme: light) {
+    :root:not([data-theme]) .sun-icon {
+        display: block;
+    }
+
+    :root:not([data-theme]) .moon-icon {
+        display: none;
+    }
 }
 
-:root[data-theme="dark"] .moon-icon {
-    display: none;
+/* Smooth Scrolling */
+html {
+    scroll-behavior: smooth;
 }
 
-/* Tabs */
-.tabs {
-    display: flex;
-    gap: 0.5rem;
+/* Page Navigation */
+.page-nav {
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    padding: 0.75rem 0;
     margin-bottom: 1.5rem;
     border-bottom: 1px solid var(--border);
-    padding-bottom: 0.5rem;
+    z-index: 100;
+    display: flex;
+    gap: 0.25rem;
+    flex-wrap: wrap;
 }
 
-.tab {
-    background: transparent;
-    border: none;
+.page-nav a {
     color: var(--text-muted);
-    padding: 0.75rem 1.5rem;
-    cursor: pointer;
-    font-size: 1rem;
-    border-radius: var(--radius) var(--radius) 0 0;
+    text-decoration: none;
+    padding: 0.375rem 0.875rem;
+    border-radius: var(--radius);
     transition: all 0.2s;
+    font-size: 0.875rem;
+    font-weight: 500;
 }
 
-.tab:hover {
+.page-nav a:hover {
     color: var(--text);
     background: var(--bg-card);
 }
 
-.tab.active {
+.page-nav a:active {
     color: var(--primary);
     background: var(--bg-card);
-    border-bottom: 2px solid var(--primary);
 }
 
-/* Tab Content */
-.tab-content {
-    display: none;
+/* Content Sections */
+.content-section {
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
 }
 
-.tab-content.active {
-    display: block;
+.content-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
 }
 
 /* Section Header */
@@ -237,6 +251,7 @@ header h1 {
 .card:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px var(--shadow-color);
+    border-color: var(--primary);
 }
 
 .card-header {
@@ -287,6 +302,8 @@ header h1 {
 
 .btn-primary:hover {
     background: var(--primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
 }
 
 .btn-secondary {
@@ -296,6 +313,7 @@ header h1 {
 
 .btn-secondary:hover {
     background: var(--border);
+    transform: translateY(-1px);
 }
 
 .btn-danger {
@@ -346,6 +364,7 @@ header h1 {
 .form-group select:focus {
     outline: none;
     border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .form-row {
@@ -394,6 +413,7 @@ header h1 {
 .search-box select:focus {
     outline: none;
     border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 /* Search Results */
