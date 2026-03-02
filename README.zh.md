@@ -1,5 +1,7 @@
 [English](./README.md) | [中文](./README.zh.md)
 
+> 此项目大量使用 AI 编程且不适合生产用途。未来可能产生破坏性更改。请谨慎使用。
+
 ---
 
 # docs-mcp-rs

@@ -1,5 +1,7 @@
 [English](./README.md) | [中文](./README.zh.md)
 
+> This project is heavily vibe-coded and not ready for production use. Breaking changes may happen. Use at your own risk.
+
 ---
 
 # docs-mcp-rs
