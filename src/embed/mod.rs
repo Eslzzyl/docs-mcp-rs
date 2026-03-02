@@ -1,5 +1,7 @@
 //! Embedding module for vector generation.
 
+pub mod rate_limiter;
+
 mod google;
 mod none;
 mod openai;
@@ -8,6 +10,7 @@ mod types;
 pub use google::GoogleEmbedder;
 pub use none::NoneEmbedder;
 pub use openai::OpenAIEmbedder;
+pub use rate_limiter::{create_rate_limiter, RateLimiter, RateLimiterStats, SharedRateLimiter};
 pub use types::{EmbeddingModel, EmbeddingResult, GOOGLE_MODELS, OPENAI_MODELS};
 
 use crate::core::Result;
@@ -38,6 +41,13 @@ pub trait Embedder: Send + Sync {
 /// Create an embedder based on configuration.
 /// Returns NoneEmbedder if no API key is configured.
 pub fn create_embedder(config: &EmbeddingConfig) -> Result<Box<dyn Embedder>> {
+    // Create rate limiter if limits are configured
+    let rate_limiter = if config.max_rpm > 0 && config.max_tpm > 0 {
+        Some(create_rate_limiter(config.max_rpm, config.max_tpm, config.request_delay_ms))
+    } else {
+        None
+    };
+
     match config.provider {
         EmbeddingProvider::OpenAI => match &config.openai_api_key {
             Some(api_key) if !api_key.is_empty() => {
@@ -47,12 +57,18 @@ pub fn create_embedder(config: &EmbeddingConfig) -> Result<Box<dyn Embedder>> {
                         base_url.clone(),
                         config.openai_model.clone(),
                         config.dimension,
+                        rate_limiter,
+                        config.max_retries,
+                        config.retry_base_delay_ms,
                     )?
                 } else {
                     OpenAIEmbedder::new(
                         api_key.clone(),
                         config.openai_model.clone(),
                         config.dimension,
+                        rate_limiter,
+                        config.max_retries,
+                        config.retry_base_delay_ms,
                     )?
                 };
                 Ok(Box::new(embedder))
@@ -70,12 +86,18 @@ pub fn create_embedder(config: &EmbeddingConfig) -> Result<Box<dyn Embedder>> {
                         config.google_model.clone(),
                         config.dimension,
                         base_url.clone(),
+                        rate_limiter,
+                        config.max_retries,
+                        config.retry_base_delay_ms,
                     )?
                 } else {
                     GoogleEmbedder::new(
                         api_key.clone(),
                         config.google_model.clone(),
                         config.dimension,
+                        rate_limiter,
+                        config.max_retries,
+                        config.retry_base_delay_ms,
                     )?
                 };
                 Ok(Box::new(embedder))

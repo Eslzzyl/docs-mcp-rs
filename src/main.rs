@@ -57,6 +57,32 @@ async fn main() {
         _ => EmbeddingProvider::OpenAI,
     };
 
+    // Read rate limiting config from environment variables
+    let embedding_delay_ms = std::env::var("DOCS_MCP_EMBEDDING_DELAY_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or_default();
+
+    let embedding_max_rpm = std::env::var("DOCS_MCP_EMBEDDING_MAX_RPM")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or_default();
+
+    let embedding_max_tpm = std::env::var("DOCS_MCP_EMBEDDING_MAX_TPM")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or_default();
+
+    let embedding_max_retries = std::env::var("DOCS_MCP_EMBEDDING_MAX_RETRIES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or_default();
+
+    let embedding_retry_base_delay_ms = std::env::var("DOCS_MCP_EMBEDDING_RETRY_BASE_DELAY_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or_default();
+
     config.embedding = EmbeddingConfig {
         provider: embedding_provider,
         openai_api_key: cli.openai_key.clone(),
@@ -73,7 +99,12 @@ async fn main() {
         } else {
             "text-embedding-004".to_string()
         },
-        ..Default::default()
+        dimension: config.embedding.dimension, // Keep the default dimension
+        request_delay_ms: embedding_delay_ms,
+        max_rpm: embedding_max_rpm,
+        max_tpm: embedding_max_tpm,
+        max_retries: embedding_max_retries,
+        retry_base_delay_ms: embedding_retry_base_delay_ms,
     };
 
     // Initialize database

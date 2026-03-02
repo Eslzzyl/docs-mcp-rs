@@ -198,6 +198,26 @@ pub struct EmbeddingConfig {
     /// Embedding dimension (for vector storage).
     #[serde(default = "default_embedding_dim")]
     pub dimension: usize,
+
+    /// Rate limiting: Request delay in milliseconds between batches.
+    #[serde(default = "default_request_delay_ms")]
+    pub request_delay_ms: u64,
+
+    /// Rate limiting: Maximum requests per minute.
+    #[serde(default = "default_max_rpm")]
+    pub max_rpm: u32,
+
+    /// Rate limiting: Maximum tokens per minute.
+    #[serde(default = "default_max_tpm")]
+    pub max_tpm: u32,
+
+    /// Rate limiting: Maximum retries for 429 errors.
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+
+    /// Rate limiting: Base delay for retries in milliseconds.
+    #[serde(default = "default_retry_base_delay_ms")]
+    pub retry_base_delay_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -224,6 +244,26 @@ fn default_embedding_dim() -> usize {
     1536 // Default for text-embedding-3-small
 }
 
+fn default_request_delay_ms() -> u64 {
+    150 // 150ms delay between requests
+}
+
+fn default_max_rpm() -> u32 {
+    1800 // 1800 requests per minute (90% of 2000)
+}
+
+fn default_max_tpm() -> u32 {
+    800000 // 800k tokens per minute (80% of 1M)
+}
+
+fn default_max_retries() -> u32 {
+    3 // 3 retries for 429 errors
+}
+
+fn default_retry_base_delay_ms() -> u64 {
+    1000 // 1 second base retry delay
+}
+
 impl Default for EmbeddingConfig {
     fn default() -> Self {
         Self {
@@ -235,6 +275,11 @@ impl Default for EmbeddingConfig {
             google_api_base: None,
             google_model: default_google_model(),
             dimension: default_embedding_dim(),
+            request_delay_ms: default_request_delay_ms(),
+            max_rpm: default_max_rpm(),
+            max_tpm: default_max_tpm(),
+            max_retries: default_max_retries(),
+            retry_base_delay_ms: default_retry_base_delay_ms(),
         }
     }
 }
