@@ -117,21 +117,23 @@ pub async fn scrape_docs(
     let pages = page_store.find_by_version(version.id)?;
     let pages_count = pages.len();
 
-    // Count total chunks
-    let total_chunks: usize = pages
-        .iter()
-        .map(|p| {
-            connection
-                .with_connection(|conn| {
-                    conn.query_row(
-                        "SELECT COUNT(*) FROM documents WHERE page_id = ?1",
-                        rusqlite::params![p.id],
-                        |row| row.get::<_, i64>(0),
-                    )
+    // Count total chunks using single query with IN clause
+    let total_chunks: usize = if pages.is_empty() {
+        0
+    } else {
+        let page_ids: Vec<i64> = pages.iter().map(|p| p.id).collect();
+        let placeholders: Vec<String> = (1..=page_ids.len()).map(|i| format!("?{}", i)).collect();
+        let in_clause = placeholders.join(", ");
+
+        connection
+            .with_connection(|conn| {
+                let sql = format!("SELECT COUNT(*) FROM documents WHERE page_id IN ({})", in_clause);
+                conn.query_row(&sql, rusqlite::params_from_iter(page_ids.iter()), |row| {
+                    row.get::<_, i64>(0)
                 })
-                .unwrap_or(0) as usize
-        })
-        .sum();
+            })
+            .unwrap_or(0) as usize
+    };
 
     Ok(CallToolResult::success(vec![Content::text(format!(
         "Successfully scraped {} pages with {} chunks for library '{}' (version: {})",

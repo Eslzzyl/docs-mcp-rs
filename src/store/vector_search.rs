@@ -1,8 +1,9 @@
 //! Vector search operations.
 
 use crate::core::{Error, Result, SearchResult};
-use crate::store::{Connection, DocumentStore, LibraryStore, PageStore, VersionStore};
+use crate::store::Connection;
 use std::collections::HashMap;
+use std::str::FromStr;
 
 /// Vector search options.
 #[derive(Debug, Clone)]
@@ -125,7 +126,11 @@ impl<'a> VectorSearch<'a> {
 
         let limit = self.options.limit * 3; // Get more for fusion
 
-        self.conn.with_connection(|conn| {
+        // Clone values to satisfy 'static lifetime requirement for spawn_blocking
+        let library_name = library_name.to_string();
+        let version_name = version_name.map(|s| s.to_string());
+
+        self.conn.with_connection_async(move |conn| {
             let mut stmt = conn.prepare(&sql)?;
 
             let results = if version_name.is_some() {
@@ -149,7 +154,7 @@ impl<'a> VectorSearch<'a> {
             };
 
             Ok(results)
-        })
+        }).await
     }
 
     /// Perform full-text search.
@@ -185,7 +190,11 @@ impl<'a> VectorSearch<'a> {
 
         let limit = self.options.limit * 3;
 
-        self.conn.with_connection(|conn| {
+        // Clone values to satisfy 'static lifetime requirement for spawn_blocking
+        let library_name = library_name.to_string();
+        let version_name = version_name.map(|s| s.to_string());
+
+        self.conn.with_connection_async(move |conn| {
             let mut stmt = conn.prepare(&sql)?;
 
             let results = if version_name.is_some() {
@@ -211,7 +220,7 @@ impl<'a> VectorSearch<'a> {
             };
 
             Ok(results)
-        })
+        }).await
     }
 
     /// Combine results using Reciprocal Rank Fusion.
@@ -245,49 +254,139 @@ impl<'a> VectorSearch<'a> {
     }
 
     /// Build search results from document IDs.
+    /// Optimized: Uses single JOIN query instead of N+1 queries.
     async fn build_search_results(&self, doc_scores: Vec<(i64, f32)>) -> Result<Vec<SearchResult>> {
-        let doc_store = DocumentStore::new(self.conn);
-        let page_store = PageStore::new(self.conn);
-        let version_store = VersionStore::new(self.conn);
-        let library_store = LibraryStore::new(self.conn);
-
-        let mut results = Vec::with_capacity(doc_scores.len());
-
-        for (doc_id, score) in doc_scores {
-            // Load document
-            let doc = match doc_store.find_by_id(doc_id)? {
-                Some(d) => d,
-                None => continue,
-            };
-
-            // Load page
-            let page = match page_store.find_by_id(doc.page_id)? {
-                Some(p) => p,
-                None => continue,
-            };
-
-            // Load version
-            let version = match version_store.find_by_id(page.version_id)? {
-                Some(v) => v,
-                None => continue,
-            };
-
-            // Load library
-            let library = match library_store.find_by_id(version.library_id)? {
-                Some(l) => l,
-                None => continue,
-            };
-
-            results.push(SearchResult {
-                document: doc,
-                page,
-                version,
-                library,
-                score,
-            });
+        if doc_scores.is_empty() {
+            return Ok(Vec::new());
         }
 
-        Ok(results)
+        // Build score map for ordering
+        let _score_map: HashMap<i64, f32> = doc_scores.iter().cloned().collect();
+
+        // Build IN clause with parameter placeholders
+        let ids: Vec<i64> = doc_scores.iter().map(|(id, _)| *id).collect();
+        let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("?{}", i)).collect();
+        let in_clause = placeholders.join(", ");
+
+        // Single query to fetch all documents with their relations
+        let sql = format!(
+            r#"
+            SELECT
+                d.id, d.page_id, d.content, d.metadata, d.sort_order, d.embedding, d.created_at,
+                p.id as page_id, p.version_id, p.url, p.title, p.etag, p.last_modified, p.content_type, p.depth, p.created_at as page_created_at, p.updated_at as page_updated_at,
+                v.id as version_id, v.library_id, v.name as version_name, v.status, v.progress_pages, v.progress_max_pages, v.error_message, v.scraper_options, v.source_url, v.started_at, v.created_at as version_created_at, v.updated_at as version_updated_at,
+                l.id as library_id, l.name as library_name, l.created_at as library_created_at
+            FROM documents d
+            JOIN pages p ON d.page_id = p.id
+            JOIN versions v ON p.version_id = v.id
+            JOIN libraries l ON v.library_id = l.id
+            WHERE d.id IN ({})
+            "#,
+            in_clause
+        );
+
+        // Clone values to satisfy 'static lifetime requirement for spawn_blocking
+        let sql = sql.clone();
+        let ids = ids.clone();
+
+        let results = self.conn.with_connection_async(move |conn| {
+            let mut stmt = conn.prepare(&sql)?;
+
+            let rows = stmt.query_map(rusqlite::params_from_iter(ids.iter()), |row| {
+                // Parse document
+                let metadata_json: String = row.get(3)?;
+                let metadata: crate::core::ChunkMetadata =
+                    serde_json::from_str(&metadata_json).unwrap_or_default();
+                let embedding_blob: Option<Vec<u8>> = row.get(5)?;
+                let embedding = embedding_blob.map(|bytes| {
+                    bytes
+                        .chunks_exact(4)
+                        .map(|chunk| {
+                            let mut bytes = [0u8; 4];
+                            bytes.copy_from_slice(chunk);
+                            f32::from_le_bytes(bytes)
+                        })
+                        .collect()
+                });
+
+                let doc = crate::core::Document {
+                    id: row.get(0)?,
+                    page_id: row.get(1)?,
+                    content: row.get(2)?,
+                    metadata,
+                    sort_order: row.get(4)?,
+                    embedding,
+                    created_at: row.get(6)?,
+                };
+
+                // Parse page
+                let page = crate::core::Page {
+                    id: row.get(7)?,
+                    version_id: row.get(8)?,
+                    url: row.get(9)?,
+                    title: row.get(10)?,
+                    etag: row.get(11)?,
+                    last_modified: row.get(12)?,
+                    content_type: row.get(13)?,
+                    depth: row.get(14)?,
+                    created_at: row.get(15)?,
+                    updated_at: row.get(16)?,
+                };
+
+                // Parse version
+                let version = crate::core::Version {
+                    id: row.get(17)?,
+                    library_id: row.get(18)?,
+                    name: row.get(19)?,
+                    status: crate::core::VersionStatus::from_str(&row.get::<_, String>(20)?)
+                        .unwrap_or_default(),
+                    progress_pages: row.get(21)?,
+                    progress_max_pages: row.get(22)?,
+                    error_message: row.get(23)?,
+                    scraper_options: row
+                        .get::<_, Option<String>>(24)?
+                        .and_then(|s| serde_json::from_str(&s).ok()),
+                    source_url: row.get(25)?,
+                    started_at: row.get(26)?,
+                    created_at: row.get(27)?,
+                    updated_at: row.get(28)?,
+                };
+
+                // Parse library
+                let library = crate::core::Library {
+                    id: row.get(29)?,
+                    name: row.get(30)?,
+                    created_at: row.get(31)?,
+                };
+
+                Ok((doc.id, (doc, page, version, library)))
+            })?;
+
+            let mut map: HashMap<i64, (crate::core::Document, crate::core::Page, crate::core::Version, crate::core::Library)> =
+                HashMap::new();
+            for row in rows {
+                let (id, data) = row.map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))?;
+                map.insert(id, data);
+            }
+
+            Ok(map)
+        }).await?;
+
+        // Build results in the original order
+        let mut search_results = Vec::with_capacity(doc_scores.len());
+        for (doc_id, score) in doc_scores {
+            if let Some((doc, page, version, library)) = results.get(&doc_id) {
+                search_results.push(SearchResult {
+                    document: doc.clone(),
+                    page: page.clone(),
+                    version: version.clone(),
+                    library: library.clone(),
+                    score,
+                });
+            }
+        }
+
+        Ok(search_results)
     }
 
     /// Escape special characters for FTS query.

@@ -12,7 +12,7 @@ use docs_mcp_rs::events::EventBus;
 use docs_mcp_rs::mcp::DocsMcpServer;
 use docs_mcp_rs::pipeline::{PipelineManager, ScraperOptions};
 use docs_mcp_rs::store::{
-    Connection, DocumentStore, LibraryStore, PageStore, VectorSearch, VersionStore, run_migrations,
+    Connection, LibraryStore, VectorSearch, VersionStore, run_migrations,
 };
 use docs_mcp_rs::web::{AppState, create_router_with_mcp};
 use std::sync::Arc;
@@ -409,6 +409,7 @@ async fn run_list(connection: Arc<Connection>) -> docs_mcp_rs::core::Result<()> 
 }
 
 /// Run the remove command.
+/// Optimized: Uses database CASCADE DELETE to avoid N+1 queries.
 async fn run_remove(
     connection: Arc<Connection>,
     library: String,
@@ -424,16 +425,9 @@ async fn run_remove(
 
         if let Some(ver_name) = version {
             // Remove specific version
+            // CASCADE DELETE will automatically remove pages and documents
             let ver = version_store.find_by_library_and_name(lib.id, &ver_name)?;
             if let Some(ver) = ver {
-                // Delete pages and documents
-                let page_store = PageStore::new(&connection);
-                let pages = page_store.find_by_version(ver.id)?;
-                for page in pages {
-                    let doc_store = DocumentStore::new(&connection);
-                    doc_store.delete_by_page(page.id)?;
-                    page_store.delete(page.id)?;
-                }
                 version_store.delete(ver.id)?;
                 println!("✅ Removed version {} of {}", ver_name, library);
             } else {
@@ -441,17 +435,7 @@ async fn run_remove(
             }
         } else {
             // Remove entire library
-            let versions = version_store.find_by_library(lib.id)?;
-            for v in versions {
-                let page_store = PageStore::new(&connection);
-                let pages = page_store.find_by_version(v.id)?;
-                for page in pages {
-                    let doc_store = DocumentStore::new(&connection);
-                    doc_store.delete_by_page(page.id)?;
-                    page_store.delete(page.id)?;
-                }
-                version_store.delete(v.id)?;
-            }
+            // CASCADE DELETE will automatically remove versions, pages, and documents
             library_store.delete(lib.id)?;
             println!("✅ Removed library {}", library);
         }

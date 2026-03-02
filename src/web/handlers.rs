@@ -259,21 +259,41 @@ async fn get_library(
                 Err(e) => return Json(ApiResponse::error(e.to_string())),
             };
 
+            // Pre-compute page counts for all versions using single GROUP BY query
+            let page_counts: std::collections::HashMap<String, usize> = if versions.is_empty() {
+                std::collections::HashMap::new()
+            } else {
+                state
+                    .connection
+                    .with_connection(|conn| {
+                        let mut stmt = conn.prepare(
+                            "SELECT v.name, COUNT(p.id) as page_count
+                             FROM versions v
+                             LEFT JOIN pages p ON p.version_id = v.id
+                             WHERE v.library_id = ?1
+                             GROUP BY v.id, v.name",
+                        )?;
+
+                        let rows = stmt.query_map(rusqlite::params![lib.id], |row| {
+                            let version_name: String = row.get(0)?;
+                            let count: i64 = row.get(1)?;
+                            Ok((version_name, count as usize))
+                        })?;
+
+                        let mut counts = std::collections::HashMap::new();
+                        for row in rows {
+                            let (name, count) = row?;
+                            counts.insert(name, count);
+                        }
+                        Ok(counts)
+                    })
+                    .unwrap_or_default()
+            };
+
             let version_infos: Vec<VersionInfo> = versions
                 .into_iter()
                 .map(|v| {
-                    let page_count = state
-                        .connection
-                        .with_connection(|conn| {
-                            conn.query_row(
-                                "SELECT COUNT(*) FROM pages p 
-                             JOIN versions v ON p.version_id = v.id 
-                             WHERE v.library_id = ?1 AND v.name = ?2",
-                                rusqlite::params![lib.id, v.name],
-                                |row| row.get::<_, i64>(0),
-                            )
-                        })
-                        .unwrap_or(0) as usize;
+                    let page_count = page_counts.get(&v.name).copied().unwrap_or(0);
 
                     VersionInfo {
                         name: v.name,
