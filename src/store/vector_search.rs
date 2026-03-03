@@ -1,9 +1,13 @@
 //! Vector search operations.
 
 use crate::core::{Error, Result, SearchResult};
+use crate::core::embedding::try_decode_embedding;
 use crate::store::Connection;
 use std::collections::HashMap;
 use std::str::FromStr;
+
+/// Default embedding dimension for auto-detection (OpenAI text-embedding-3-small)
+const DEFAULT_EMBEDDING_DIMENSION: usize = 1536;
 
 /// Vector search options.
 #[derive(Debug, Clone)]
@@ -304,15 +308,12 @@ impl<'a> VectorSearch<'a> {
                     let metadata: crate::core::ChunkMetadata =
                         serde_json::from_str(&metadata_json).unwrap_or_default();
                     let embedding_blob: Option<Vec<u8>> = row.get(5)?;
-                    let embedding = embedding_blob.map(|bytes| {
-                        bytes
-                            .chunks_exact(4)
-                            .map(|chunk| {
-                                let mut bytes = [0u8; 4];
-                                bytes.copy_from_slice(chunk);
-                                f32::from_le_bytes(bytes)
+                    let embedding = embedding_blob.as_ref().and_then(|bytes| {
+                        // Auto-detect format: f16 (dim*2 bytes) or f32 (dim*4 bytes)
+                        try_decode_embedding(bytes, DEFAULT_EMBEDDING_DIMENSION)
+                            .or_else(|| {
+                                [768, 3072].iter().find_map(|&dim| try_decode_embedding(bytes, dim))
                             })
-                            .collect()
                     });
 
                     let doc = crate::core::Document {

@@ -1,8 +1,12 @@
 //! Document storage operations.
 
 use crate::core::{Document, NewDocument, Result};
+use crate::core::embedding::{encode_embedding_f16, try_decode_embedding};
 use crate::store::Connection;
 use chrono::{DateTime, Utc};
+
+/// Default embedding dimension for auto-detection (OpenAI text-embedding-3-small)
+const DEFAULT_EMBEDDING_DIMENSION: usize = 1536;
 
 /// Store for document operations.
 pub struct DocumentStore<'a> {
@@ -20,9 +24,8 @@ impl<'a> DocumentStore<'a> {
         let metadata_json =
             serde_json::to_string(&doc.metadata).unwrap_or_else(|_| "{}".to_string());
         let embedding_blob = doc.embedding.as_ref().map(|e| {
-            // Convert Vec<f32> to bytes
-            let bytes: Vec<u8> = e.iter().flat_map(|f| f.to_le_bytes()).collect();
-            bytes
+            // Convert Vec<f32> to f16 bytes (50% size reduction)
+            encode_embedding_f16(e)
         });
 
         self.conn.with_transaction(|tx| {
@@ -61,8 +64,8 @@ impl<'a> DocumentStore<'a> {
                 let metadata_json =
                     serde_json::to_string(&doc.metadata).unwrap_or_else(|_| "{}".to_string());
                 let embedding_blob = doc.embedding.as_ref().map(|e| {
-                    let bytes: Vec<u8> = e.iter().flat_map(|f| f.to_le_bytes()).collect();
-                    bytes
+                    // Convert Vec<f32> to f16 bytes (50% size reduction)
+                    encode_embedding_f16(e)
                 });
 
                 tx.execute(
@@ -104,11 +107,13 @@ impl<'a> DocumentStore<'a> {
 
             let result = stmt.query_row(rusqlite::params![id], |row| {
                 let embedding_blob: Option<Vec<u8>> = row.get(5)?;
-                let embedding = embedding_blob.map(|b| {
-                    // Convert bytes back to Vec<f32>
-                    b.chunks_exact(4)
-                        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
-                        .collect()
+                let embedding = embedding_blob.as_ref().and_then(|b| {
+                    // Auto-detect format: f16 (dim*2 bytes) or f32 (dim*4 bytes)
+                    try_decode_embedding(b, DEFAULT_EMBEDDING_DIMENSION)
+                        .or_else(|| {
+                            // Fallback: try other common dimensions
+                            [768, 3072].iter().find_map(|&dim| try_decode_embedding(b, dim))
+                        })
                 });
 
                 Ok(Document {
@@ -144,12 +149,12 @@ impl<'a> DocumentStore<'a> {
             let docs = stmt
                 .query_map(rusqlite::params![page_id], |row| {
                     let embedding_blob: Option<Vec<u8>> = row.get(5)?;
-                    let embedding = embedding_blob.map(|b| {
-                        b.chunks_exact(4)
-                            .map(|chunk| {
-                                f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]])
+                    let embedding = embedding_blob.as_ref().and_then(|b| {
+                        // Auto-detect format: f16 (dim*2 bytes) or f32 (dim*4 bytes)
+                        try_decode_embedding(b, DEFAULT_EMBEDDING_DIMENSION)
+                            .or_else(|| {
+                                [768, 3072].iter().find_map(|&dim| try_decode_embedding(b, dim))
                             })
-                            .collect()
                     });
 
                     Ok(Document {
@@ -352,7 +357,11 @@ mod tests {
         let found = store.find_by_id(doc.id).expect("Failed to find document");
         assert!(found.is_some());
         let found = found.unwrap();
-        assert_eq!(found.embedding, Some(vec![0.1, 0.2, 0.3]));
+        // f16 has about 3-4 decimal digits of precision
+        let embedding = found.embedding.expect("Should have embedding");
+        assert!((embedding[0] - 0.1).abs() < 0.001);
+        assert!((embedding[1] - 0.2).abs() < 0.001);
+        assert!((embedding[2] - 0.3).abs() < 0.001);
 
         // Find by page
         let docs = store

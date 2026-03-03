@@ -41,6 +41,7 @@ headless_chrome = { version = "1.0.21", features = ["fetch"] }
 r2d2 = "0.8"
 r2d2_sqlite = "0.32"
 sqlite-vec = "0.1.6"
+half = { version = "2.4", features = ["bytemuck"] }
 
 
 [profile.dev]
