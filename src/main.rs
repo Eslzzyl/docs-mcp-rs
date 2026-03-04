@@ -197,12 +197,27 @@ async fn run_serve(
 
     if stdio {
         println!("🚀 MCP server starting in stdio mode...");
+        println!("Press Ctrl+C to stop");
 
         // Create MCP server with pipeline
         let server = DocsMcpServer::new(config.clone(), (*connection).clone(), pipeline.clone())?;
 
-        // Run stdio server
-        server.run().await
+        // Run stdio server with graceful shutdown
+        tokio::select! {
+            result = server.run() => {
+                if let Err(e) = result {
+                    eprintln!("❌ MCP server error: {}", e);
+                }
+            }
+            _ = tokio::signal::ctrl_c() => {
+                println!("\n🛑 Shutdown signal received...");
+            }
+        }
+
+        // Stop pipeline on shutdown
+        pipeline.stop().await;
+
+        Ok(())
     } else {
         println!("🚀 HTTP server starting on port {}", port);
         println!("📍 Web UI: http://localhost:{}", port);
@@ -232,8 +247,14 @@ async fn run_serve(
 
         println!("Press Ctrl+C to stop");
 
-        // Run server
+        // Run server with graceful shutdown
         axum::serve(listener, app)
+            .with_graceful_shutdown(async {
+                tokio::signal::ctrl_c()
+                    .await
+                    .expect("failed to install CTRL+C signal handler");
+                println!("\n🛑 Shutdown signal received...");
+            })
             .await
             .map_err(|e| docs_mcp_rs::core::Error::Mcp(e.to_string()))?;
 
@@ -265,10 +286,24 @@ async fn run_scrape(
     let event_bus = EventBus::new();
 
     // Create pipeline manager
-    let pipeline = PipelineManager::new(connection.clone(), embedder, event_bus, concurrency);
+    let pipeline = Arc::new(PipelineManager::new(
+        connection.clone(),
+        embedder,
+        event_bus,
+        concurrency,
+    ));
 
     // Start pipeline
     pipeline.start().await;
+
+    // Handle Ctrl+C for graceful shutdown
+    let pipeline_cancel = pipeline.clone();
+    tokio::spawn(async move {
+        if let Ok(_) = tokio::signal::ctrl_c().await {
+            println!("\n🛑 Shutdown signal received, stopping scraping...");
+            pipeline_cancel.stop().await;
+        }
+    });
 
     // Enqueue job
     let options = ScraperOptions {
