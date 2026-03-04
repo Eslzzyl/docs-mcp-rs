@@ -267,6 +267,7 @@ impl TabFetcher {
                 .map_err(|e| Error::Http(format!("Failed to navigate to {}: {}", url, e)))?;
 
             // Poll for navigation completion with cancellation checks
+            // Wait for both URL change AND document.readyState to be 'complete'
             let mut attempts = 0;
             let max_attempts = timeout.as_millis() / 100;
             loop {
@@ -276,10 +277,22 @@ impl TabFetcher {
                     }
                 }
 
-                // Check if navigation is complete
+                // Check if navigation is complete (URL changed)
                 let current_url = tab_guard.tab.get_url();
                 if !current_url.is_empty() && current_url != "about:blank" {
-                    break;
+                    // Also check if document is ready
+                    let ready_state_script = "() => document.readyState";
+                    if let Ok(result) = tab_guard.tab.evaluate(ready_state_script, false) {
+                        if let Some(ref value) = result.value {
+                            if value.as_str() == Some("complete") {
+                                break;
+                            }
+                        }
+                    }
+                    // If readyState check fails but URL changed, still break after more attempts
+                    if attempts > 20 {
+                        break;
+                    }
                 }
 
                 attempts += 1;
@@ -305,6 +318,29 @@ impl TabFetcher {
         }
 
         trace!("Page navigated successfully: {}", url);
+
+        // Wait for body element to exist (ensure DOM content is loaded)
+        for i in 0..50 {
+            if let Some(token) = cancel_token {
+                if token.is_cancelled() {
+                    return Err(Error::Mcp("Job cancelled".to_string()));
+                }
+            }
+
+            let body_check = "() => document.body && document.body.innerHTML.length > 0";
+            if let Ok(result) = tab_guard.tab.evaluate(body_check, false) {
+                if let Some(ref value) = result.value {
+                    if value.as_bool() == Some(true) {
+                        trace!("Body element found with content");
+                        break;
+                    }
+                }
+            }
+
+            if i < 49 {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        }
 
         // Check for cancellation after navigation
         if let Some(token) = cancel_token {
@@ -393,7 +429,7 @@ impl TabFetcher {
             match self.extract_shadow_dom_content(tab_guard.tab) {
                 Ok(shadow_content) => {
                     if !shadow_content.is_empty() {
-                        debug!("Extracted Shadow DOM content");
+                        debug!("Extracted Shadow DOM content: {} bytes", shadow_content.len());
                         content = shadow_content;
                     }
                 }
@@ -408,7 +444,7 @@ impl TabFetcher {
             match self.process_iframes_content(tab_guard.tab, &content).await {
                 Ok(iframe_content) => {
                     if !iframe_content.is_empty() {
-                        debug!("Processed iframe content");
+                        debug!("Processed iframe content: {} bytes", iframe_content.len());
                         content = iframe_content;
                     }
                 }

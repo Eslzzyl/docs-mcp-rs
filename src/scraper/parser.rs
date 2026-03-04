@@ -61,16 +61,28 @@ impl HtmlParser {
 
     /// Extract main content from HTML (excluding navigation, header, footer, etc.).
     pub fn extract_main_content(&self, document: &Html) -> String {
-        // Try to find main content areas
+        // Try to find main content areas - ordered by specificity
         let main_selectors = [
+            // ReadTheDocs theme (RenPy uses this)
+            ("[itemprop='articleBody']", Selector::parse("[itemprop=\"articleBody\"]").ok()),
+            (".wy-nav-content", Selector::parse(".wy-nav-content").ok()),
+            (".rst-content", Selector::parse(".rst-content").ok()),
+            // Sphinx documentation
+            (".document > .body", Selector::parse(".document > .body").ok()),
+            (".documentwrapper .body", Selector::parse(".documentwrapper .body").ok()),
+            (".document", Selector::parse(".document").ok()),
+            // Standard HTML5
             ("main", Selector::parse("main").ok()),
             ("article", Selector::parse("article").ok()),
             ("[role='main']", Selector::parse("[role=\"main\"]").ok()),
+            // Common CSS classes
             (".content", Selector::parse(".content").ok()),
             (".documentation", Selector::parse(".documentation").ok()),
             (".docs", Selector::parse(".docs").ok()),
             ("#content", Selector::parse("#content").ok()),
             ("#main", Selector::parse("#main").ok()),
+            (".main-content", Selector::parse(".main-content").ok()),
+            ("#main-content", Selector::parse("#main-content").ok()),
         ];
 
         for (name, selector) in main_selectors.iter() {
@@ -99,6 +111,62 @@ impl HtmlParser {
         // Last resort: all text
         let content: String = document.root_element().text().collect();
         debug!("Extracted main content from root: {} chars", content.len());
+        content
+    }
+
+    /// Extract main content HTML (not text) from HTML document.
+    /// Returns the inner HTML of the main content element.
+    pub fn extract_main_content_html(&self, document: &Html) -> String {
+        // Try to find main content areas - ordered by specificity
+        let main_selectors = [
+            // ReadTheDocs theme (RenPy uses this)
+            ("[itemprop='articleBody']", Selector::parse("[itemprop=\"articleBody\"]").ok()),
+            (".wy-nav-content", Selector::parse(".wy-nav-content").ok()),
+            (".rst-content", Selector::parse(".rst-content").ok()),
+            // Sphinx documentation
+            (".document > .body", Selector::parse(".document > .body").ok()),
+            (".documentwrapper .body", Selector::parse(".documentwrapper .body").ok()),
+            (".document", Selector::parse(".document").ok()),
+            // Standard HTML5
+            ("main", Selector::parse("main").ok()),
+            ("article", Selector::parse("article").ok()),
+            ("[role='main']", Selector::parse("[role=\"main\"]").ok()),
+            // Common CSS classes
+            (".content", Selector::parse(".content").ok()),
+            (".documentation", Selector::parse(".documentation").ok()),
+            (".docs", Selector::parse(".docs").ok()),
+            ("#content", Selector::parse("#content").ok()),
+            ("#main", Selector::parse("#main").ok()),
+            (".main-content", Selector::parse(".main-content").ok()),
+            ("#main-content", Selector::parse("#main-content").ok()),
+        ];
+
+        for (name, selector) in main_selectors.iter() {
+            if let Some(sel) = selector {
+                if let Some(el) = document.select(sel).next() {
+                    let content = el.html();
+                    debug!(
+                        "Extracted main content HTML using selector '{}': {} chars",
+                        name,
+                        content.len()
+                    );
+                    return content;
+                }
+            }
+        }
+
+        // Fallback: extract body HTML
+        if let Ok(body_selector) = Selector::parse("body") {
+            if let Some(body) = document.select(&body_selector).next() {
+                let content = body.html();
+                debug!("Extracted main content HTML from body: {} chars", content.len());
+                return content;
+            }
+        }
+
+        // Last resort: entire document HTML
+        let content = document.root_element().html();
+        debug!("Extracted main content HTML from root: {} chars", content.len());
         content
     }
 
@@ -277,5 +345,145 @@ mod tests {
                 .iter()
                 .any(|l| l.url == "https://other.com/page3" && !l.is_internal)
         );
+    }
+
+    #[test]
+    fn test_extract_main_content_html() {
+        let html = r#"
+            <html>
+            <head><title>Test</title></head>
+            <body>
+                <header>Header</header>
+                <main>
+                    <h1>Main Content</h1>
+                    <p>This is the <strong>main</strong> content.</p>
+                </main>
+                <footer>Footer</footer>
+            </body>
+            </html>
+        "#;
+        let parser = HtmlParser::new();
+        let doc = parser.parse(html);
+
+        let content = parser.extract_main_content_html(&doc);
+
+        // Should contain HTML tags, not just text
+        assert!(content.contains("<h1>"), "Content should contain HTML tags");
+        assert!(content.contains("Main Content"), "Content should have the text");
+        assert!(content.contains("<strong>"), "Content should preserve inline HTML");
+
+        // Should not contain header or footer
+        assert!(!content.contains("Header"), "Content should not include header");
+        assert!(!content.contains("Footer"), "Content should not include footer");
+    }
+
+    #[test]
+    fn test_extract_main_content_html_fallback_to_body() {
+        let html = r#"
+            <html>
+            <head><title>Test</title></head>
+            <body>
+                <div class="wrapper">
+                    <p>Content without main/article tags.</p>
+                </div>
+            </body>
+            </html>
+        "#;
+        let parser = HtmlParser::new();
+        let doc = parser.parse(html);
+
+        let content = parser.extract_main_content_html(&doc);
+
+        // Should fallback to body content
+        assert!(content.contains("Content without main/article tags"));
+    }
+
+    #[test]
+    fn test_extract_sphinx_documentation() {
+        // Test extraction from Sphinx-generated documentation (like RenPy)
+        let html = r#"
+            <html>
+            <head><title>RenPy Documentation</title></head>
+            <body>
+                <div class="document">
+                    <div class="sphinxsidebar">Navigation</div>
+                    <div class="body">
+                        <h1>Welcome to Ren'Py</h1>
+                        <p>Ren'Py is a visual novel engine.</p>
+                        <div class="section">
+                            <h2>Getting Started</h2>
+                            <p>Learn how to use Ren'Py.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="footer">Copyright 2024</div>
+            </body>
+            </html>
+        "#;
+        let parser = HtmlParser::new();
+        let doc = parser.parse(html);
+
+        let content = parser.extract_main_content_html(&doc);
+
+        // Should extract from .document > .body
+        assert!(
+            content.contains("Welcome to Ren'Py"),
+            "Content should contain main heading, got: {}",
+            content
+        );
+        assert!(content.contains("visual novel engine"), "Content should have description");
+        assert!(
+            content.contains("Getting Started"),
+            "Content should contain subsection"
+        );
+
+        // Should not contain sidebar or footer
+        assert!(!content.contains("Navigation"), "Content should not include sidebar");
+        assert!(!content.contains("Copyright"), "Content should not include footer");
+    }
+
+    #[test]
+    fn test_extract_readthedocs_documentation() {
+        // Test extraction from ReadTheDocs theme (like RenPy)
+        let html = r#"
+            <html>
+            <head><title>RenPy Documentation</title></head>
+            <body class="wy-body-for-nav">
+                <nav class="wy-nav-side">Navigation Menu</nav>
+                <div class="wy-nav-content">
+                    <div class="rst-content">
+                        <div role="navigation" aria-label="Page navigation">
+                            <ul class="wy-breadcrumbs"><li>Home</li></ul>
+                        </div>
+                        <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+                            <div itemprop="articleBody">
+                                <h1>Welcome to Ren'Py's documentation!</h1>
+                                <p>To find out more about Ren'Py, please visit the Ren'Py home page:</p>
+                                <a href="http://www.renpy.org/">http://www.renpy.org/</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <footer>Copyright 2024</footer>
+            </body>
+            </html>
+        "#;
+        let parser = HtmlParser::new();
+        let doc = parser.parse(html);
+
+        let content = parser.extract_main_content_html(&doc);
+
+        // Should extract from [itemprop='articleBody'] first
+        assert!(
+            content.contains("Welcome to Ren'Py's documentation"),
+            "Content should contain main heading, got: {}",
+            content
+        );
+        assert!(content.contains("renpy.org"), "Content should have links");
+
+        // Should not contain navigation or footer
+        assert!(!content.contains("Navigation Menu"), "Content should not include sidebar");
+        assert!(!content.contains("Home"), "Content should not include breadcrumbs");
+        assert!(!content.contains("Copyright"), "Content should not include footer");
     }
 }

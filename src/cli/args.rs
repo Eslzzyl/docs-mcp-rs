@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 #[command(version, about, long_about = None)]
 pub struct Cli {
     /// Path to the database file.
-    #[arg(short, long, global = true, default_value = "./data/docs.db")]
+    #[arg(short = 'D', long, global = true, default_value = "./data/docs.db")]
     pub database: String,
 
     /// Embedding model to use (e.g., "openai:text-embedding-3-small" or "google:text-embedding-004").
