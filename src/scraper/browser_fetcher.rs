@@ -17,7 +17,7 @@ use crate::scraper::FetchResult;
 use headless_chrome::protocol::cdp::Fetch::RequestPattern;
 use headless_chrome::protocol::cdp::Page::CaptureScreenshotFormatOption;
 use headless_chrome::types::PrintToPdfOptions;
-use headless_chrome::{Browser, LaunchOptions, Tab};
+use headless_chrome::{Browser, Tab};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -109,7 +109,7 @@ impl BrowserPool {
         }
 
         info!("Initializing headless Chrome browser");
-        let browser = Self::launch_browser(&self.config)?;
+        let browser = Self::launch_browser()?;
         let browser_arc = Arc::new(browser);
         *browser_guard = Some(browser_arc.clone());
 
@@ -118,37 +118,8 @@ impl BrowserPool {
     }
 
     /// Launch a new browser instance.
-    fn launch_browser(config: &BrowserFetchConfig) -> Result<Browser> {
-        let mut launch_options_builder = LaunchOptions::default_builder();
-
-        launch_options_builder
-            .headless(config.headless)
-            .window_size(Some((config.window_width, config.window_height)));
-
-        // Set Chrome executable path if provided
-        if let Some(ref path) = config.chrome_path {
-            launch_options_builder.path(Some(std::path::PathBuf::from(path)));
-            debug!("Using custom Chrome path: {}", path);
-        } else if let Ok(chrome_path) = std::env::var("CHROME_PATH") {
-            launch_options_builder.path(Some(std::path::PathBuf::from(&chrome_path)));
-            debug!("Using CHROME_PATH environment variable: {}", chrome_path);
-        }
-
-        // Add arguments for better compatibility
-        let args: Vec<&std::ffi::OsStr> = vec![
-            std::ffi::OsStr::new("--no-sandbox"),
-            std::ffi::OsStr::new("--disable-dev-shm-usage"),
-            std::ffi::OsStr::new("--disable-gpu"),
-            std::ffi::OsStr::new("--disable-web-security"),
-            std::ffi::OsStr::new("--disable-features=IsolateOrigins,site-per-process"),
-        ];
-        launch_options_builder.args(args);
-
-        let launch_options = launch_options_builder
-            .build()
-            .map_err(|e| Error::Scraper(format!("Failed to build Chrome launch options: {}", e)))?;
-
-        Browser::new(launch_options).map_err(|e| {
+    fn launch_browser() -> Result<Browser> {
+        Browser::default().map_err(|e| {
             Error::Scraper(format!(
                 "Failed to launch Chrome browser. Make sure Chrome/Chromium is installed. Error: {}",
                 e
